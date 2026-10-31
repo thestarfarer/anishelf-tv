@@ -159,23 +159,18 @@ Live checks from the build machine on 2026-10-31:
 The package was rebuilt with LG's CLI and `npm run verify` confirmed that every
 packaged app/service file is byte-identical to the source tree.
 
+## Verified on the TV
+
+On the LG OLED55C2RLA (webOS 25, firmware 33.22.52): installation, the service,
+AnimeOnsen browsing (no Cloudflare challenge on a home connection), and DASH
+episode playback with video and sound through Shaka Player.
+
 ## Not verified
 
-- **The verification on the TV:** whether webOS 25 exposes the inspector to the
-  jailed service on 127.0.0.1:9998 for this app, whether WAM allows the app
-  window to navigate to AnimeOnsen and back, and whether Cloudflare accepts the
-  cookie from the service (it is sent with the browser's user agent but not the
-  browser's TLS fingerprint).
-- **Real AnimeOnsen browsing/playback.** The build machine is a datacenter IP and
-  was challenged on every host. The real manifests' codecs, segment layout and
-  CDN header requirements have not been observed. The service sends the same
-  headers as the upstream extension (User-Agent, Referer, Origin), which is all
-  Manatan needed for the CDN.
-- **LG C2 hardware:** installation, jailed-service startup, Luna subscription
-  lifecycle, Shaka/Media Source on webOS 25, codec support for AnimeOnsen's
-  streams, external-subtitle timing, colour-key delivery, Magic Remote focus,
-  standby/resume, and native exit behaviour.
-- Independent security review and performance on a large library.
+- **The in-app Cloudflare check** on a real challenge (the TV was not challenged).
+- Colour-key delivery, standby/resume and exit behaviour, other TV models and
+  webOS versions, an independent security review, and performance on a large
+  library.
 
 ## First hardware check
 

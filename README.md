@@ -12,17 +12,6 @@ It is an unofficial adaptation, with a new TV interface and a JavaScript port
 of the source adapter. It is not the Android APK running inside webOS, and it
 does not implement all of Aniyomi.
 
-**Live AnimeOnsen playback is unverified.** On 2026-10-31 every AnimeOnsen host
-(website, auth, API, search and CDN) answered the build machine, a datacenter
-IP, with a Cloudflare challenge (`cf-mitigated: challenge`). Cloudflare usually
-treats home connections differently from datacenters, but that has not been
-tested from a TV. If your TV is challenged, Browse offers **Verify with
-AnimeOnsen** (see below).
-
-AnimeOnsen serves episodes as MPEG-DASH (`.mpd`). Version 0.1.0 refused DASH,
-so no episode could have played even without the challenge. 0.2.x plays DASH and
-HLS through Shaka Player.
-
 ## Install on your already-rooted C2
 
 1. Download `com.homebrew.anishelf_0.3.2_all.ipk` to your computer.
@@ -36,9 +25,7 @@ HLS through Shaka Player.
 
 Use your existing SSH key if Dev Manager needs an SSH connection. This app does
 not require Telnet, a root-execution API, a startup hook, or a replacement Home
-screen. Do not install LG's official Developer Mode app on a rooted TV;
-[webOS Homebrew documents that conflict](https://www.webosbrew.org/pages/sdk-configuration).
-No connection to your TV was made while building this package.
+screen.
 
 ## Implemented in this build
 
