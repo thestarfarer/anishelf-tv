@@ -1,6 +1,25 @@
-# Validation — AniShelf TV 0.2.1
+# Validation — AniShelf TV 0.3.0
 
 Status: **experimental build, not a completed or hardware-verified Aniyomi port**.
+
+## Changes in 0.3.0
+
+- **Verify with AnimeOnsen.** When a request is answered with Cloudflare's
+  browser check (`cf-mitigated: challenge`), Browse and Settings offer to open
+  AnimeOnsen's check in AniShelf's own window. The service drives that window
+  through the TV's developer-app inspector (`127.0.0.1:9998`). It reads the
+  `animeonsen.xyz` cookies once a new `cf_clearance` appears, and returns the
+  window to AniShelf (`#cf=verified`, or `#cf=timeout` after three minutes).
+  Requests to AnimeOnsen hosts then send those cookies with the browser's user
+  agent. A challenged request re-reads the cookie from the browser once (for
+  example after a service restart) before reporting the challenge.
+- Research behind the design (2026-10-31): the challenge page sends
+  `X-Frame-Options: SAMEORIGIN`, so it cannot be framed. LG enforces CORS for
+  packaged apps, and the undocumented `useCORSWhitelist` needs an LG signature,
+  so the requests cannot move into the page. Developer-installed apps are
+  inspectable on port 9998 (webosbrew documentation).
+- A minimal DevTools client (`service/cdp.js`) because Node 16 has no WebSocket.
+- Fixed while testing: `app.js` shadowed `window.history` with its back stack.
 
 ## Changes in 0.2.1
 
@@ -47,7 +66,14 @@ Two bugs found in a review of 0.2.0, both reproduced before fixing:
 
 ## Passed
 
-`npm test`: **23 tests passed**, adding to 0.1.0's coverage:
+`npm test`: **28 tests passed** (the 5 new clearance tests also pass on Node
+16.20.2), adding to 0.1.0's coverage:
+
+- 0.3.0: the DevTools client (loopback-only connection despite the URL host the
+  inspector reports, 70 KB fragmented replies, ping/pong, error replies, missing
+  inspector); verification outcomes (verified, timeout, cancelled), the return
+  navigation, cookie domain/expiry/host-only matching, user-agent binding, and
+  the single re-read-and-retry for API and media requests.
 
 - DASH origin route: manifest, init and media segments served; unknown routes 404;
   private addresses rejected.
@@ -62,7 +88,15 @@ Two bugs found in a review of 0.2.0, both reproduced before fixing:
   XML rejection, and a served CDN-switch manifest whose segments route correctly.
 
 `npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **19 checks
-passed**, with the app's Content-Security-Policy enforced and no violations:
+passed**, with the app's Content-Security-Policy enforced and no violations.
+`tests/verify-ui.cjs` adds **6 checks**. It uses Chromium's real DevTools port
+and a local check page under `www.animeonsen.xyz` (host-mapped to 127.0.0.1)
+that sets an HttpOnly domain cookie when clicked. The real adapter only gets
+data with that cookie. Checked: the challenged Browse offers verification, the
+window opens the check page, it returns by itself after the click, requests
+carry the cookie and the browser's user agent, Connection details show the
+clearance, and after a simulated service restart the cookie is re-read without
+asking again. 0.2.1 checks:
 
 - 0.2.1: switching to the next episode at 29/30 s during a deliberately slowed
   unload leaves the next episode unwatched; a DASH episode whose manifest
@@ -92,6 +126,11 @@ packaged app/service file is byte-identical to the source tree.
 
 ## Not verified
 
+- **The verification on the TV:** whether webOS 25 exposes the inspector to the
+  jailed service on 127.0.0.1:9998 for this app, whether WAM allows the app
+  window to navigate to AnimeOnsen and back, and whether Cloudflare accepts the
+  cookie from the service (it is sent with the browser's user agent but not the
+  browser's TLS fingerprint).
 - **Real AnimeOnsen browsing/playback.** The build machine is a datacenter IP and
   was challenged on every host. The real manifests' codecs, segment layout and
   CDN header requirements have not been observed. The service sends the same

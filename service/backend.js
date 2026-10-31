@@ -7,7 +7,7 @@ const { Onsen, HEADERS, HOSTS, API, id } = require('./onsen');
 const { toVtt } = require('./subtitles');
 const { createSkipTimes } = require('./aniskip');
 const { rewriteDash } = require('./dash');
-const VERSION = '0.2.1';
+const VERSION = '0.3.0';
 
 function rewriteHls(text, base, register) {
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist.');
@@ -28,7 +28,8 @@ function sourceError(error) {
   return error.message || 'The source could not be reached.';
 }
 async function startBackend(options = {}) {
-  const source = options.source || new Onsen();
+  const clearance = options.clearance || null;
+  const source = options.source || new Onsen(undefined, clearance);
   const open = options.open || network.open;
   const skipTimes = options.skipTimes || createSkipTimes();
   const token = crypto.randomBytes(32).toString('hex');
@@ -98,7 +99,9 @@ async function startBackend(options = {}) {
       try {
         data = { intervals: await skipTimes(p.get('mal'), Number(p.get('episode')), Number(p.get('length') || 0)) };
       } catch (error) { data = { intervals: [], unavailable: error.message || 'AniSkip could not be reached.' }; }
-    } else if (op === 'status') data = { source: 'AnimeOnsen', version: VERSION, lastError, loopbackOnly: true };
+    } else if (op === 'status') {
+      data = { source: 'AnimeOnsen', version: VERSION, lastError, loopbackOnly: true, clearance: clearance ? clearance.status() : null };
+    }
     else { sendJson(res, 404, { error: 'Unknown method.' }); return; }
     sendJson(res, 200, data);
   }
@@ -110,12 +113,17 @@ async function startBackend(options = {}) {
     }
     const controller = new AbortController();
     res.on('close', () => controller.abort());
-    const upstream = await open(resource.url, { allowedHosts, headers, signal: controller.signal,
+    const fetchUpstream = () => open(resource.url, { allowedHosts, signal: controller.signal,
+      headers: { ...headers, ...(clearance ? clearance.headersFor(resource.url) : {}) },
       method: req.method === 'HEAD' ? 'HEAD' : 'GET' });
+    const challenged = response => response.statusCode === 403 && response.headers['cf-mitigated'] === 'challenge';
+    let upstream = await fetchUpstream();
+    if (challenged(upstream) && clearance && await clearance.refresh().catch(() => false)) { upstream.resume(); upstream = await fetchUpstream(); }
     if (![200, 206, 304].includes(upstream.statusCode)) {
       upstream.resume();
-      const error = new Error(`Media request failed (HTTP ${upstream.statusCode}).`);
-      error.status = upstream.statusCode; throw error;
+      const challenge = challenged(upstream);
+      const error = new Error(challenge ? 'AnimeOnsen asks this connection to pass a browser check. Choose Verify with AnimeOnsen to do it once on the TV.' : `Media request failed (HTTP ${upstream.statusCode}).`);
+      error.status = upstream.statusCode; if (challenge) error.code = 'SOURCE_CHALLENGE'; throw error;
     }
     const mime = String(upstream.headers['content-type'] || 'application/octet-stream');
     const isHls = /mpegurl/i.test(mime) || /\.m3u8(?:\?|$)/i.test(resource.url);
@@ -183,7 +191,9 @@ async function startBackend(options = {}) {
     } catch (error) {
       // Seeking and page changes cancel requests all the time; those are not source failures.
       if (error.code !== 'ABORTED' && !res.destroyed) lastError = { message: sourceError(error), at: new Date().toISOString() };
-      if (!res.headersSent && !res.destroyed) sendJson(res, 502, { error: sourceError(error) });
+      if (!res.headersSent && !res.destroyed) {
+        sendJson(res, 502, { error: sourceError(error), ...(error.code === 'SOURCE_CHALLENGE' ? { code: 'SOURCE_CHALLENGE' } : {}) });
+      }
       else res.destroy();
     }
   });

@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   const A = window.AniShelf;
-  let base, connecting, bridge;
+  let base, connecting, bridge, verifyBridge;
   async function connect() {
     if (base) return base;
     if (connecting) return connecting;
@@ -19,7 +19,8 @@
             base = message.base; resolve(base);
           } catch (e) { reject(e); }
         };
-        bridge.call('luna://com.homebrew.anishelf.source/session', JSON.stringify({ subscribe: true }));
+        // The user agent is what a Cloudflare clearance from this browser is bound to.
+        bridge.call('luna://com.homebrew.anishelf.source/session', JSON.stringify({ subscribe: true, userAgent: navigator.userAgent }));
       } else {
         // This endpoint exists only in the optional desktop development server.
         fetch('/__session').then(r => { if (!r.ok) throw new Error('Open the installed TV app or start the supplied development server.'); return r.json(); })
@@ -38,7 +39,7 @@
     try {
       const response = await fetch(base + '/api/' + method + '?' + query.toString(), { signal: timeout.signal, cache: 'no-store' });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'The source request failed.');
+      if (!response.ok) { const failure = new Error(result.error || 'The source request failed.'); failure.code = result.code; throw failure; }
       return result;
     } catch (error) {
       if (error.name === 'AbortError') throw error;
@@ -46,6 +47,30 @@
       throw error;
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   }
-  A.api = { call, connect };
+  // Starts AnimeOnsen's browser check in this window. The service brings the app back afterwards.
+  function verify() {
+    const appUrl = location.href.split('#')[0], userAgent = navigator.userAgent;
+    if (typeof window.PalmServiceBridge !== 'function') {
+      // This endpoint exists only in the optional desktop development server.
+      return fetch('/__verify?' + new URLSearchParams({ appUrl, userAgent }), { cache: 'no-store' }).then(async response => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.started) throw new Error(data.error || 'Verification could not start.');
+        return data;
+      });
+    }
+    return new Promise((resolve, reject) => {
+      verifyBridge = new window.PalmServiceBridge();
+      const timer = setTimeout(() => reject(new Error('The TV source service did not respond.')), 15000);
+      verifyBridge.onservicecallback = raw => {
+        clearTimeout(timer);
+        try {
+          const message = JSON.parse(raw);
+          if (message.returnValue) resolve(message); else reject(new Error(message.errorText || 'Verification could not start.'));
+        } catch (e) { reject(e); }
+      };
+      verifyBridge.call('luna://com.homebrew.anishelf.source/verify', JSON.stringify({ appUrl, userAgent }));
+    });
+  }
+  A.api = { call, connect, verify };
   window.addEventListener('pagehide', () => bridge?.cancel());
 })();

@@ -92,7 +92,7 @@ async function request(value, options = {}) {
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const challenge = response.headers['cf-mitigated'] === 'challenge';
     const name = options.serviceName || 'AnimeOnsen';
-    const error = new Error(challenge ? `${name} requires browser verification on this connection. This TV build cannot complete that challenge.` : `${name} returned HTTP ${response.statusCode}.`);
+    const error = new Error(challenge ? `${name} asks this connection to pass a browser check. Choose Verify with AnimeOnsen to do it once on the TV.` : `${name} returned HTTP ${response.statusCode}.`);
     error.status = response.statusCode;
     if (challenge) error.code = 'SOURCE_CHALLENGE';
     throw error;

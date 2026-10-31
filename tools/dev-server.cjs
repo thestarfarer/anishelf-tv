@@ -10,6 +10,14 @@ async function createDevelopmentServer(options = {}) {
       // Development only. Production session tokens are delivered over the Luna bus.
       res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ base: session.base })); return true;
     }
+    if (url.pathname === '/__verify' && req.method === 'GET') {
+      // Development only. On the TV this is the service's Luna method `verify`.
+      res.setHeader('Content-Type', 'application/json');
+      if (!options.clearance) { res.statusCode = 501; res.end(JSON.stringify({ error: 'This development server has no browser inspector configured.' })); return true; }
+      try { res.end(JSON.stringify(await options.clearance.start({ appUrl: url.searchParams.get('appUrl'), userAgent: url.searchParams.get('userAgent') }))); }
+      catch (error) { res.statusCode = 400; res.end(JSON.stringify({ error: error.message })); }
+      return true;
+    }
     if (url.pathname.startsWith(new URL(session.base).pathname)) return false;
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return true; }
     let decoded;

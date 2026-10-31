@@ -1,6 +1,7 @@
 'use strict';
 // Adapted from Yuzono's AnimeOnsen extension (Apache-2.0). See NOTICE.
 const network = require('./network');
+const { withClearance } = require('./clearance');
 const SITE = 'https://www.animeonsen.xyz';
 const API = 'https://api.animeonsen.xyz/v4';
 const SEARCH = 'https://search.animeonsen.xyz';
@@ -35,8 +36,8 @@ function normalize(item, preferred = 'romaji') {
   };
 }
 class Onsen {
-  constructor(transport = network.request) {
-    this.transport = transport;
+  constructor(transport = network.request, clearance = null) {
+    this.transport = withClearance(transport, clearance);
     this.token = null;
     this.tokenUntil = 0;
     this.tokenPromise = null;

@@ -22,9 +22,26 @@
   }
   function loading(where = content) { const row = el('div', 'loading-row'); row.append(el('div', 'spinner'), el('span', '', 'Loading from AnimeOnsen…')); where.append(row); return row; }
   function errorState(error, retry, where = content) {
-    const box = el('section', 'empty'); box.append(el('h2', 'error-title', 'Couldn’t reach this source'), el('p', '', error.message));
-    box.append(el('p', 'error-note', 'Your library and saved progress are still on this TV.'));
-    box.append(button('Try again', retry, 'primary')); where.append(box); return box;
+    const box = el('section', 'empty'), actions = el('div', 'actions');
+    if (error.code === 'SOURCE_CHALLENGE') {
+      box.append(el('h2', 'error-title', 'AnimeOnsen wants a quick check'), el('p', '', error.message));
+      box.append(el('p', 'error-note', 'AniShelf opens AnimeOnsen’s check page on the TV. Complete it with the pointer if it asks, and AniShelf comes back on its own.'));
+      actions.append(button('Verify with AnimeOnsen', verifySource, 'primary'), button('Try again', retry, 'subtle'));
+    } else {
+      box.append(el('h2', 'error-title', 'Couldn’t reach this source'), el('p', '', error.message));
+      box.append(el('p', 'error-note', 'Your library and saved progress are still on this TV.'));
+      actions.append(button('Try again', retry, 'primary'));
+    }
+    box.append(actions); where.append(box); return box;
+  }
+  async function verifySource() {
+    A.toast('Opening AnimeOnsen’s check…');
+    try { await A.api.verify(); }
+    catch (e) {
+      A.openModal('Verification could not start', body => {
+        body.append(el('p', '', e.message), button('Close', A.closeModal, 'primary'));
+      });
+    }
   }
   function titleOf(item) { return (A.state.settings().title === 'english' ? item.english : item.romaji) || item.title; }
   function poster(item) {
@@ -224,8 +241,9 @@
       const a = document.createElement('a'); a.href = url; a.download = 'anishelf-library.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
       A.toast('Backup requested. Some TV browsers do not support file downloads.');
     }, 'subtle')); backup.append(actions, file); content.append(backup);
-    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.2.1'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
+    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.3.0'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
     about.append(el('p', 'technical-note', 'AnimeOnsen browsing, episodes, library, history, subtitles, DASH/HLS playback with quality and audio selection, and AniSkip opening/ending skips. Android extension APKs, manga, downloads and tracker sync are not implemented. AnimeOnsen may require browser verification on some networks.'));
+    about.append(button('Verify AnimeOnsen access', verifySource, 'subtle load-more'));
     about.append(button('Connection details', async () => {
       let text;
       try { text = JSON.stringify(await A.api.call('status'), null, 2); } catch (e) { text = e.message; }
@@ -249,6 +267,9 @@
   }
   for (const nav of document.querySelectorAll('[data-route]')) nav.onclick = () => navigate(nav.dataset.route);
   async function start() {
+    // The service returns the window here after AnimeOnsen's browser check.
+    const verification = (location.hash.match(/^#cf=(\w+)$/) || [])[1];
+    if (verification) window.history.replaceState(null, '', location.pathname + location.search); // `history` here is the in-app back stack
     try {
       const response = await fetch('seed-library.json');
       if (response.ok) {
@@ -256,8 +277,10 @@
         if (seed.library && Object.keys(seed.library).length) A.state.seed(seed);
       }
     } catch (_) {}
-    if (A.state.list().length) library(); else browse();
+    if (A.state.list().length && verification !== 'verified') library(); else browse();
     if (A.storageWarning) A.toast(A.storageWarning);
+    const outcomes = { verified: 'AnimeOnsen check passed.', timeout: 'The AnimeOnsen check timed out. You can try again.' };
+    if (outcomes[verification]) A.toast(outcomes[verification]);
   }
   start();
 })();

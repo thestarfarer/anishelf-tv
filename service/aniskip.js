@@ -27,7 +27,7 @@ function createSkipTimes(transport = network.request) {
     try {
       intervals = parse(await transport(`${API}/${malId}/${episode}?${query}`, {
         allowedHosts: HOSTS, serviceName: 'AniSkip', timeout: 10000,
-        headers: { 'User-Agent': 'AniShelf-TV/0.2.1', Accept: 'application/json' },
+        headers: { 'User-Agent': 'AniShelf-TV/0.3.0', Accept: 'application/json' },
       }));
     } catch (error) {
       if (error.status !== 404) throw error;

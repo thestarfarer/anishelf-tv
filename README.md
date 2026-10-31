@@ -1,6 +1,6 @@
 # AniShelf TV — an experimental Aniyomi adaptation
 
-This build (0.2.1) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
+This build (0.3.0) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
 33.22.52). It runs entirely on the TV and starts with the **AnimeOnsen** source.
 It is an unofficial adaptation, with a new TV interface and a JavaScript port
 of the source adapter. It is not the Android APK running inside webOS, and it
@@ -8,10 +8,10 @@ does not implement all of Aniyomi.
 
 **Live AnimeOnsen playback is unverified.** On 2026-10-31 every AnimeOnsen host
 (website, auth, API, search and CDN) answered the build machine, a datacenter
-IP, with a Cloudflare challenge (`cf-mitigated: challenge`). This build does not
-solve those challenges. Cloudflare usually treats home connections differently
-from datacenters, but that has not been tested from a TV. If Browse shows a
-verification error, installing this package has not bypassed it.
+IP, with a Cloudflare challenge (`cf-mitigated: challenge`). Cloudflare usually
+treats home connections differently from datacenters, but that has not been
+tested from a TV. If your TV is challenged, Browse offers **Verify with
+AnimeOnsen** (see below).
 
 AnimeOnsen serves episodes as MPEG-DASH (`.mpd`). Version 0.1.0 refused DASH,
 so no episode could have played even without the challenge. 0.2.x plays DASH and
@@ -19,7 +19,7 @@ HLS through Shaka Player.
 
 ## Install on your already-rooted C2
 
-1. Download `com.homebrew.anishelf_0.2.1_all.ipk` to your computer.
+1. Download `com.homebrew.anishelf_0.3.0_all.ipk` to your computer.
 2. Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop)
    and connect using your existing rooted-TV connection.
 3. Choose **Apps → Install**, select the `.ipk`, and wait for installation.
@@ -54,11 +54,34 @@ No connection to your TV was made while building this package.
 - External VTT, SRT and basic ASS subtitles, including a language selector.
 - Optional automatic next episode, off by default.
 - AniShelf JSON backup merge/export and an offline Aniyomi backup converter.
+- Cloudflare browser check in the app window (Verify with AnimeOnsen).
 
 Not implemented: Android extension APK loading, other source adapters, manga,
-downloads, tracker sync, DRM, Cloudflare challenge solving, the AnimeOnsen genre
-filter, advanced ASS styling or simultaneous phone/TV library synchronization. File pickers/downloads depend on the TV web
+downloads, tracker sync, DRM, the AnimeOnsen genre filter, advanced ASS styling
+or simultaneous phone/TV library synchronization. File pickers/downloads depend on the TV web
 engine; use the seed-library method below if they are unavailable.
+
+## AnimeOnsen's browser check (Cloudflare)
+
+When AnimeOnsen answers with Cloudflare's browser check, Browse shows **Verify
+with AnimeOnsen** (also under Settings). AniShelf's own window then opens
+AnimeOnsen's check page. Complete it with the Magic Remote pointer if it asks;
+when the site has loaded, AniShelf returns by itself. If nothing happens for
+three minutes, it returns and you can try again.
+
+This is the webOS counterpart of Aniyomi's WebView handoff. The check page
+cannot be framed (`X-Frame-Options: SAMEORIGIN`), and page scripts cannot read
+the HttpOnly `cf_clearance` cookie. So the service drives the app window through
+the TV's inspector for developer-installed apps on `127.0.0.1:9998`: it opens the
+check page, reads the resulting AnimeOnsen cookies, and brings the window back.
+AnimeOnsen requests then carry those cookies and the browser's own user agent,
+which Cloudflare binds the cookie to. It injects no script into the page, needs
+no root, and only reads cookies for `animeonsen.xyz`. After a service restart
+the cookie is read back from the browser when a request is challenged.
+
+It needs the inspector: apps installed as developer apps (Dev Manager, `dev/install`)
+are inspectable by default. Cloudflare may still refuse a cookie used outside the
+browser; Aniyomi relies on the same handoff.
 
 ## Remote controls
 
@@ -141,9 +164,10 @@ See `VALIDATION.md` for what was actually tested and what still needs hardware.
 ## Network and permissions
 
 The app's service runs in the ordinary webOS JavaScript service jail. The
-frontend calls its own `com.homebrew.anishelf.source/session` method; it never
-calls Homebrew's root command service, launches a shell, or changes system
-settings. It requests no privileged system API permissions.
+frontend calls its own `com.homebrew.anishelf.source/session` and `verify`
+methods; it never calls Homebrew's root command service, launches a shell, or
+changes system settings. `verify` uses the TV's local app inspector as described
+under AnimeOnsen's browser check. It requests no privileged system API permissions.
 
 Media and API requests go through a helper bound to **127.0.0.1 only**, on a
 random port, with a random 256-bit session token. Images, subtitles and HLS

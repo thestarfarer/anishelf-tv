@@ -1,4 +1,4 @@
-AniShelf TV 0.2.1
+AniShelf TV 0.3.0
 Unofficial personal webOS adaptation. Not affiliated with or endorsed by Aniyomi,
 Yuzono, AnimeOnsen, or LG Electronics.
 
@@ -39,6 +39,11 @@ Opening/ending times are looked up from the community AniSkip API
 (https://api.aniskip.com/v2/skip-times), as Aniyomi's player does. No AniSkip code
 is included. The request carries only a MyAnimeList ID, episode number and episode
 length, and can be switched off in Settings.
+
+Cloudflare check handoff
+The in-app verification follows Aniyomi's approach (WebView cookie handoff to the
+HTTP client), reimplemented for webOS with the TV's DevTools inspector. It
+contains no code from Aniyomi or third-party Cloudflare tools.
 
 Build-only dependencies
 @webos-tools/cli 3.2.6: LG Electronics, Apache-2.0.
