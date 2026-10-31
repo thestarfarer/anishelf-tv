@@ -5,6 +5,8 @@ const { pipeline } = require('stream');
 const network = require('./network');
 const { Onsen, HEADERS, HOSTS, API, id } = require('./onsen');
 const { toVtt } = require('./subtitles');
+const { createSkipTimes } = require('./aniskip');
+const VERSION = '0.2.0';
 
 function rewriteHls(text, base, register) {
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist.');
@@ -15,6 +17,26 @@ function rewriteHls(text, base, register) {
     return register(new URL(line.trim(), base).href);
   }).join('\n');
 }
+// Relative DASH URLs already resolve through the loopback route, because that route mirrors
+// the upstream path. Absolute and host-relative URLs are redirected into the same route.
+function rewriteDash(text, manifestUrl, route) {
+  if (!/<MPD[\s>]/.test(text)) throw new Error('Invalid DASH manifest.');
+  const base = new URL(manifestUrl);
+  const map = value => {
+    const trimmed = value.trim();
+    if (!/^(?:https?:)?\/\//i.test(trimmed) && !trimmed.startsWith('/')) return value;
+    const absolute = new URL(trimmed.replace(/&amp;/g, '&'), base).href;
+    return route(absolute).replace(/&/g, '&amp;');
+  };
+  return text
+    .replace(/<Location\b[^>]*>[\s\S]*?<\/Location>/g, '')
+    .replace(/(<BaseURL\b[^>]*>)([^<]*)(<\/BaseURL>)/g, (_, open, value, close) => open + map(value) + close)
+    .replace(/\b(media|initialization|index|bitstreamSwitching|sourceURL|xlink:href)="([^"]*)"/g,
+      (_, attribute, value) => `${attribute}="${map(value)}"`);
+}
+function streamFormat(url) {
+  return /\.mpd(?:\?|$)/i.test(url) ? 'dash' : /\.m3u8(?:\?|$)/i.test(url) ? 'hls' : 'video';
+}
 function sourceError(error) {
   if (error.code === 'SOURCE_CHALLENGE') return error.message;
   if (error.status === 403) return 'AnimeOnsen refused this connection (HTTP 403). It may require browser verification.';
@@ -24,13 +46,15 @@ function sourceError(error) {
 async function startBackend(options = {}) {
   const source = options.source || new Onsen();
   const open = options.open || network.open;
+  const skipTimes = options.skipTimes || createSkipTimes();
   const token = crypto.randomBytes(32).toString('hex');
   const resources = new Map(), reverse = new Map(), sockets = new Set();
+  const origins = new Map(), originIds = new Map();
   let origin, base, lastError = null;
   const allowedHosts = new Set(HOSTS);
   function approveMedia(value) {
     const u = new URL(value);
-    // Only media URLs supplied by the fixed AnimeOnsen API can introduce a host.
+    // Only media URLs supplied by the fixed AnimeOnsen API (or its manifests) can introduce a host.
     const hosts = new Set([u.hostname.toLowerCase()]);
     network.checkedUrl(u.href, hosts);
     allowedHosts.add(u.hostname.toLowerCase());
@@ -45,6 +69,18 @@ async function startBackend(options = {}) {
     const resourceId = crypto.randomBytes(12).toString('hex');
     resources.set(resourceId, { url, kind }); reverse.set(key, resourceId);
     return base + '/resource/' + resourceId + extension;
+  }
+  // DASH segment templates ($Number$, $Time$) cannot be registered one URL at a time, so an
+  // approved media origin gets one opaque route that mirrors its paths.
+  function route(value) {
+    const u = network.checkedUrl(approveMedia(value), allowedHosts);
+    let originId = originIds.get(u.origin);
+    if (!originId) {
+      if (origins.size >= 64) throw new Error('This playback session is too large. Close and reopen the app.');
+      originId = crypto.randomBytes(12).toString('hex');
+      origins.set(originId, u.origin); originIds.set(u.origin, originId);
+    }
+    return base + '/p/' + originId + u.pathname + u.search;
   }
   function decorate(item) { return { ...item, image: register(item.image, 'image') }; }
   function sendJson(res, code, object) {
@@ -66,14 +102,19 @@ async function startBackend(options = {}) {
     else if (op === 'stream') {
       const result = await source.stream(id(p.get('id')), id(p.get('episode')));
       const stream = approveMedia(result.url);
+      const format = streamFormat(stream);
       // Video-on-demand media and image resources have opaque, session-bound URLs.
-      data = { url: register(stream),
-        format: /\.mpd(?:\?|$)/i.test(stream) ? 'dash' : /\.m3u8(?:\?|$)/i.test(stream) ? 'hls' : 'video',
+      data = { url: format === 'dash' ? route(stream) : register(stream), format,
         subtitles: result.subtitles.map(track => ({ lang: track.lang, label: track.label,
           url: register(approveMedia(track.url), 'subtitle') })) };
     } else if (op === 'image') {
       data = { url: register(`${API}/image/210x300/${encodeURIComponent(id(p.get('id')))}`, 'image') };
-    } else if (op === 'status') data = { source: 'AnimeOnsen', version: '0.1.0', lastError, loopbackOnly: true };
+    } else if (op === 'skip') {
+      // Optional lookup: a missing or failed AniSkip answer never becomes the source's error.
+      try {
+        data = { intervals: await skipTimes(p.get('mal'), Number(p.get('episode')), Number(p.get('length') || 0)) };
+      } catch (error) { data = { intervals: [], unavailable: error.message || 'AniSkip could not be reached.' }; }
+    } else if (op === 'status') data = { source: 'AnimeOnsen', version: VERSION, lastError, loopbackOnly: true };
     else { sendJson(res, 404, { error: 'Unknown method.' }); return; }
     sendJson(res, 200, data);
   }
@@ -94,21 +135,31 @@ async function startBackend(options = {}) {
     }
     const mime = String(upstream.headers['content-type'] || 'application/octet-stream');
     const isHls = /mpegurl/i.test(mime) || /\.m3u8(?:\?|$)/i.test(resource.url);
-    if (req.method !== 'HEAD' && (resource.kind === 'subtitle' || isHls)) {
-      const bytes = await network.collect(upstream, 8 * 1024 * 1024);
-      const text = resource.kind === 'subtitle' ? toVtt(bytes.toString('utf8')) :
-        rewriteHls(bytes.toString('utf8'), upstream.finalUrl || resource.url, url => register(approveMedia(url)));
-      res.writeHead(200, { 'Content-Type': resource.kind === 'subtitle' ? 'text/vtt; charset=utf-8' :
-        'application/vnd.apple.mpegurl', 'Cache-Control': 'no-store' });
-      res.end(text); return;
+    const isDash = /dash\+xml/i.test(mime) || /\.mpd(?:\?|$)/i.test(resource.url);
+    const finalUrl = upstream.finalUrl || resource.url;
+    if (isDash && resource.routed && finalUrl !== resource.url) {
+      // The player resolves relative segments against the manifest's URL, so send it to the
+      // route for the redirected location instead of serving the body under the old path.
+      upstream.resume();
+      res.writeHead(307, { Location: route(finalUrl), 'Cache-Control': 'no-store' }); res.end(); return;
     }
-    if (/dash\+xml/i.test(mime) || /\.mpd(?:\?|$)/i.test(resource.url)) {
-      upstream.resume(); throw new Error('This source returned DASH. This first TV build supports HLS and direct video.');
+    if (req.method !== 'HEAD' && (resource.kind === 'subtitle' || isHls || isDash)) {
+      const bytes = await network.collect(upstream, 8 * 1024 * 1024);
+      const text = bytes.toString('utf8');
+      let body, type;
+      if (resource.kind === 'subtitle') { body = toVtt(text); type = 'text/vtt; charset=utf-8'; }
+      else if (isDash) { body = rewriteDash(text, finalUrl, route); type = 'application/dash+xml'; }
+      else { body = rewriteHls(text, finalUrl, url => register(approveMedia(url))); type = 'application/vnd.apple.mpegurl'; }
+      res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+      res.end(body); return;
     }
     const outgoing = { 'Content-Type': mime, 'Cache-Control': resource.kind === 'image' ? 'private, max-age=600' : 'no-store' };
     for (const h of ['content-length', 'content-range', 'accept-ranges', 'content-encoding']) {
       if (upstream.headers[h]) outgoing[h] = upstream.headers[h];
     }
+    // A paused player stops reading; the connection may idle until playback resumes.
+    // The upstream request still ends when the TV closes its side.
+    upstream.socket?.setTimeout(0);
     res.writeHead(upstream.statusCode, outgoing);
     pipeline(upstream, res, () => {});
   }
@@ -124,22 +175,31 @@ async function startBackend(options = {}) {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const url = new URL(req.url, origin);
     if (options.developmentHandler && await options.developmentHandler(req, res, url, { origin, base })) return;
-    if (!url.pathname.startsWith('/' + token + '/')) { res.writeHead(404); res.end(); return; }
+    const prefix = '/' + token + '/';
+    if (!url.pathname.startsWith(prefix)) { res.writeHead(404); res.end(); return; }
     if (req.method === 'OPTIONS') {
       res.writeHead(204, { 'Access-Control-Allow-Methods': 'GET, HEAD', 'Access-Control-Allow-Headers': 'Range' });
       res.end(); return;
     }
     if (!['GET', 'HEAD'].includes(req.method)) { res.writeHead(405); res.end(); return; }
     try {
-      if (url.pathname.startsWith('/' + token + '/api/')) await handleApi(url, res);
-      else if (url.pathname.startsWith('/' + token + '/resource/')) {
+      if (url.pathname.startsWith(prefix + 'api/')) await handleApi(url, res);
+      else if (url.pathname.startsWith(prefix + 'resource/')) {
         const resource = resources.get(url.pathname.split('/').pop().split('.')[0]);
         if (!resource) { res.writeHead(404); res.end(); return; }
         await handleResource(resource, req, res);
+      } else if (url.pathname.startsWith(prefix + 'p/')) {
+        const rest = url.pathname.slice(prefix.length + 2), slash = rest.indexOf('/');
+        const upstreamOrigin = slash > 0 && origins.get(rest.slice(0, slash));
+        if (!upstreamOrigin) { res.writeHead(404); res.end(); return; }
+        const target = network.checkedUrl(upstreamOrigin + rest.slice(slash) + url.search, allowedHosts);
+        if (target.origin !== upstreamOrigin) { res.writeHead(404); res.end(); return; }
+        await handleResource({ url: target.href, kind: 'media', routed: true }, req, res);
       } else { res.writeHead(404); res.end(); }
     } catch (error) {
-      lastError = { message: sourceError(error), at: new Date().toISOString() };
-      if (!res.headersSent) sendJson(res, 502, { error: lastError.message });
+      // Seeking and page changes cancel requests all the time; those are not source failures.
+      if (error.code !== 'ABORTED' && !res.destroyed) lastError = { message: sourceError(error), at: new Date().toISOString() };
+      if (!res.headersSent && !res.destroyed) sendJson(res, 502, { error: sourceError(error) });
       else res.destroy();
     }
   });
@@ -150,7 +210,7 @@ async function startBackend(options = {}) {
   });
   origin = 'http://127.0.0.1:' + server.address().port;
   base = origin + '/' + token;
-  return { origin, base, server, register, approveMedia,
+  return { origin, base, server, register, route, approveMedia,
     close: () => new Promise(resolve => { server.close(resolve); for (const socket of sockets) socket.destroy(); }) };
 }
-module.exports = { startBackend, rewriteHls, sourceError };
+module.exports = { startBackend, rewriteHls, rewriteDash, sourceError, streamFormat };

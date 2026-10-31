@@ -8,16 +8,31 @@ fs.mkdirSync(path.join(output, 'tmp'), { recursive: true });
 process.env.TMPDIR = path.join(output, 'tmp');
 const { chromium } = require('playwright');
 const { createDevelopmentServer } = require('../tools/dev-server.cjs');
-const { fixtureSource, fixtureOpen } = require('./fixtures.cjs');
+const { fixtureSource, fixtureOpen, fixtureSkipTimes } = require('./fixtures.cjs');
+
+// Polls from Node with page.evaluate, so the app's Content-Security-Policy stays enforced
+// (Playwright's in-page waitForFunction polling needs eval, which that policy blocks).
+async function until(page, fn, arg, timeout = 15000) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (await page.evaluate(fn, arg)) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  throw new Error('Timed out waiting for: ' + fn.toString().slice(0, 140));
+}
+const info = page => page.evaluate(() => window.AniShelf.player.info());
+const now = page => page.evaluate(() => document.getElementById('video').currentTime);
 
 (async () => {
-  const server = await createDevelopmentServer({ source: fixtureSource(), open: fixtureOpen });
+  const server = await createDevelopmentServer({ source: fixtureSource(), open: fixtureOpen, skipTimes: fixtureSkipTimes });
   let browser;
   try { browser = await chromium.launch({ headless: true, executablePath: process.env.ANISHELF_CHROMIUM || chromium.executablePath(),
-    args: process.env.ANISHELF_CHROMIUM ? ['--no-zygote', '--single-process', '--disable-gpu', '--disable-software-rasterizer'] : [] }); }
+    args: process.env.ANISHELF_CHROMIUM ? ['--no-zygote', '--single-process', '--disable-gpu', '--disable-software-rasterizer', '--autoplay-policy=no-user-gesture-required'] : ['--autoplay-policy=no-user-gesture-required'] }); }
   catch (error) { await server.close(); throw error; }
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  const errors = [], policy = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (/Content.Security.Policy/i.test(message.text())) policy.push(message.text()); });
   const checks = [];
   try {
     await page.goto(server.origin);
@@ -25,18 +40,20 @@ const { fixtureSource, fixtureOpen } = require('./fixtures.cjs');
     assert.equal(await page.locator('.anime-card').count(), 6); checks.push('Catalog rendered with six titles');
     await page.screenshot({ path: path.join(output, 'browse-1920.png') });
     await page.getByRole('button', { name: 'Load more', exact: true }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.anime-card').length === 12);
-    assert.equal(await page.locator('.anime-card').count(), 12); checks.push('Catalog pagination loads additional titles');
+    await until(page, () => document.querySelectorAll('.anime-card').length === 12);
+    checks.push('Catalog pagination loads additional titles');
 
     await page.locator('[data-route="library"]').focus();
     await page.keyboard.press('ArrowDown');
     assert.equal(await page.evaluate(() => document.activeElement.dataset.route), 'browse');
     await page.keyboard.press('ArrowRight');
-    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search anime');
-    checks.push('D-pad moves between sidebar and content');
+    assert.equal(await page.evaluate(() => !!document.activeElement.closest('#content')), true);
+    await page.keyboard.press('ArrowLeft');
+    assert.equal(await page.evaluate(() => document.activeElement.dataset.route), 'browse');
+    checks.push('D-pad moves into content and Left returns to the active menu entry');
 
     await page.getByRole('searchbox').fill('rain'); await page.getByRole('button', { name: 'Search', exact: true }).click();
-    await page.waitForFunction(() => document.querySelectorAll('.anime-card').length === 1);
+    await until(page, () => document.querySelectorAll('.anime-card').length === 1);
     assert.match(await page.locator('.card-title').textContent(), /Signal/); checks.push('Search returns matching titles');
     await page.locator('.anime-card').first().click();
     await page.locator('[data-episode="1"]').waitFor();
@@ -48,27 +65,72 @@ const { fixtureSource, fixtureOpen } = require('./fixtures.cjs');
     assert.equal(await page.locator('[data-mark="2"]').textContent(), 'Watched'); checks.push('Library categories and watched status persist');
     await page.screenshot({ path: path.join(output, 'details-1920.png') });
 
+    // Episode 1 is a DASH stream with 360p/180p video and Japanese/English audio.
     await page.locator('[data-episode="1"]').click();
-    await page.waitForFunction(() => {
-      const v = document.getElementById('video'); return v.currentTime > .3 && !v.paused;
-    }, { timeout: 15000 });
-    await page.waitForFunction(() => document.getElementById('subtitle-overlay').textContent.includes('Subtitle playback test'));
-    checks.push('Real H.264/AAC sample video plays with converted subtitles');
+    await until(page, () => { const v = document.getElementById('video'); return v.currentTime > .3 && !v.paused; });
+    const dash = await info(page);
+    assert.equal(dash.engine, 'shaka'); assert.deepEqual(dash.qualities, [360, 180]); assert.equal(dash.audioTracks.length, 2);
+    assert.equal(dash.audio, 'ja');
+    await until(page, () => document.getElementById('subtitle-overlay').textContent.includes('Subtitle playback test'));
+    checks.push('DASH episode plays through Shaka with converted subtitles; Japanese audio preferred');
+
+    await until(page, () => !document.getElementById('skip-segment').hidden);
+    assert.equal(await page.locator('#skip-segment').textContent(), 'Skip opening');
+    await page.screenshot({ path: path.join(output, 'player-skip-1920.png') });
+    await page.locator('#skip-segment').click();
+    await until(page, () => document.getElementById('video').currentTime >= 8.7);
+    await until(page, () => document.getElementById('skip-segment').hidden);
+    checks.push('AniSkip opening shows a skip button that jumps past it');
+
+    await page.locator('#quality-button').click();
+    const qualityOptions = await page.locator('#modal-body .modal-list button').allTextContents();
+    assert.ok(qualityOptions[0].startsWith('Automatic')); assert.ok(qualityOptions.some(x => x.startsWith('360p'))); assert.ok(qualityOptions.some(x => x.startsWith('180p')));
+    await page.screenshot({ path: path.join(output, 'player-quality-1920.png') });
+    await page.locator('#modal-body .modal-list button', { hasText: /^180p/ }).click();
+    await until(page, () => { const i = window.AniShelf.player.info(); return i.height === 180 && i.auto === false; });
+    assert.match(await page.locator('#quality-button').textContent(), /^180p$/);
+    checks.push('Quality menu switches to a fixed 180p rendition');
+
+    await page.locator('#audio-button').click();
+    const audioOptions = await page.locator('#modal-body .modal-list button').allTextContents();
+    assert.deepEqual(audioOptions.slice().sort(), ['English', 'Japanese']);
+    await page.locator('#modal-body .modal-list button', { hasText: 'English' }).click();
+    await until(page, () => window.AniShelf.player.info().audio === 'en');
+    checks.push('Audio menu switches between Japanese and English tracks');
+
+    const before = await now(page);
     await page.getByRole('button', { name: '+10 sec', exact: true }).click();
-    await page.waitForFunction(() => document.getElementById('video').currentTime >= 10);
+    await until(page, start => document.getElementById('video').currentTime >= start + 9, before);
     await page.getByRole('button', { name: 'Pause', exact: true }).click();
     assert.equal(await page.evaluate(() => document.getElementById('video').paused), true);
     await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
     await page.locator('#modal-body').getByRole('button', { name: 'Off', exact: true }).click();
     assert.equal(await page.locator('#subtitle-overlay').textContent(), '');
+    const paused = await now(page);
     await page.getByRole('button', { name: 'Back to episodes', exact: true }).click();
     await page.locator('[data-episode="1"]').waitFor();
     assert.match(await page.locator('[data-episode="1"] .episode-state').textContent(), /resume/);
     checks.push('Seeking, pausing, subtitle selection and saved resume position work');
+
     await page.locator('[data-episode="1"]').click();
-    await page.waitForFunction(() => document.getElementById('video').currentTime >= 10);
+    await until(page, at => { const v = document.getElementById('video'); return v.currentTime >= at - 1 && !v.paused; }, paused);
+    await until(page, () => window.AniShelf.player.info().height === 180);
+    assert.equal((await info(page)).audio, 'en');
     await page.keyboard.press('Escape');
-    await page.locator('[data-episode="1"]').waitFor(); checks.push('Playback resumes at saved position and Back exits');
+    await page.locator('[data-episode="1"]').waitFor();
+    checks.push('Reopening resumes the position with the saved quality and audio choice');
+
+    await page.locator('[data-route="settings"]').click();
+    await page.getByLabel('Opening and ending', { exact: true }).selectOption('auto');
+    await page.locator('[data-route="library"]').click();
+    await page.locator('.anime-card').first().click();
+    await page.locator('[data-episode="2"]').click();
+    await until(page, () => document.getElementById('video').currentTime >= 8.7, undefined, 20000);
+    assert.equal(await page.locator('#toast').textContent(), 'Skipped the opening');
+    assert.equal((await info(page)).engine, 'shaka');
+    await page.keyboard.press('Escape');
+    await page.locator('[data-episode="2"]').waitFor();
+    checks.push('Automatic skip jumps the opening of a progressive MP4 episode');
 
     await page.locator('[data-route="library"]').click();
     await page.getByRole('button', { name: 'Planned', exact: true }).click();
@@ -79,24 +141,37 @@ const { fixtureSource, fixtureOpen } = require('./fixtures.cjs');
     assert.ok(await page.locator('.history-row').count() >= 2); checks.push('Recent playback and watched episodes appear in history');
 
     await page.locator('[data-route="settings"]').click();
+    assert.equal(await page.getByLabel('Video quality', { exact: true }).inputValue(), '180');
     await page.getByLabel('Title language', { exact: true }).selectOption('english');
+    await page.screenshot({ path: path.join(output, 'settings-1920.png'), fullPage: true });
     await page.getByRole('button', { name: 'Connection details', exact: true }).click();
     assert.match(await page.locator('.code-box').textContent(), /loopbackOnly/);
     await page.keyboard.press('Escape'); assert.equal(await page.locator('#modal').isVisible(), false);
     checks.push('Settings and diagnostic dialog are remote accessible');
+
     await page.setViewportSize({ width: 1280, height: 720 });
     await page.locator('[data-route="browse"]').click();
-    await page.getByRole('button', { name: 'Clear', exact: true }).click();
     await page.locator('.anime-card').first().waitFor();
     await page.screenshot({ path: path.join(output, 'browse-1280.png') });
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
-    checks.push('Layout fits 1920×1080 and 1280×720 without horizontal overflow');
-    assert.deepEqual(errors, []); checks.push('No uncaught browser errors');
+    await page.locator('[data-route="library"]').click();
+    await page.locator('.anime-card').first().click();
+    await page.locator('[data-episode="1"]').click();
+    await until(page, () => { const v = document.getElementById('video'); return v.currentTime > 0 && !v.paused; });
+    await page.getByRole('button', { name: 'Pause', exact: true }).click();
+    const fits = await page.evaluate(() => Array.from(document.querySelectorAll('#player-controls button')).every(b => {
+      const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth && r.bottom <= window.innerHeight;
+    }));
+    await page.screenshot({ path: path.join(output, 'player-1280.png') });
+    assert.equal(fits, true);
+    await page.keyboard.press('Escape');
+    checks.push('Layout and player controls fit 1920×1080 and 1280×720');
+    assert.deepEqual(errors, []); assert.deepEqual(policy, []); checks.push('No uncaught browser errors or Content-Security-Policy violations');
     fs.writeFileSync(path.join(output, 'ui-results.json'), JSON.stringify({ ok: true, checks, errors }, null, 2));
     console.log(checks.map(x => 'PASS ' + x).join('\n'));
   } catch (error) {
     await page.screenshot({ path: path.join(output, 'failure.png') });
-    fs.writeFileSync(path.join(output, 'ui-results.json'), JSON.stringify({ ok: false, checks, errors, failure: error.message }, null, 2));
+    fs.writeFileSync(path.join(output, 'ui-results.json'), JSON.stringify({ ok: false, checks, errors, policy, failure: error.message }, null, 2));
     throw error;
   } finally { await browser.close(); await server.close(); }
 })().catch(error => { console.error(error.stack); process.exitCode = 1; });

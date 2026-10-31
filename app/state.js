@@ -2,8 +2,10 @@
   'use strict';
   const A = window.AniShelf = window.AniShelf || {};
   const KEY = 'anishelf.state.v1';
+  const SKIP_MODES = ['button', 'auto', 'off'];
   const defaults = () => ({ version: 1, library: {}, progress: {}, settings: {
     title: 'romaji', subtitle: 'en-US', autoNext: false,
+    quality: 'auto', audio: 'ja', skip: 'button', introLength: 85,
   }, importedSeed: false });
   function safeId(value) {
     return typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,160}$/.test(value) &&
@@ -16,6 +18,7 @@
       description: String(item.description || '').slice(0, 10000),
       genres: Array.isArray(item.genres) ? item.genres.slice(0, 50).map(x => String(x).slice(0, 100)) : [],
       status: String(item.status || ''), score: Number(item.score) || null,
+      malId: Number.isInteger(Number(item.malId)) && Number(item.malId) > 0 ? Number(item.malId) : null,
       category: ['Watching', 'Planned', 'Completed'].includes(item.category) ? item.category : 'Watching',
       addedAt: Number(item.addedAt) || Date.now() };
   }
@@ -42,6 +45,11 @@
       result.settings.title = value.settings.title === 'english' ? 'english' : 'romaji';
       result.settings.subtitle = typeof value.settings.subtitle === 'string' ? value.settings.subtitle.slice(0, 30) : 'en-US';
       result.settings.autoNext = value.settings.autoNext === true;
+      if (value.settings.quality === 'auto' || /^\d{3,4}$/.test(value.settings.quality)) result.settings.quality = value.settings.quality;
+      if (typeof value.settings.audio === 'string' && /^[a-z]{0,3}(?:-[A-Za-z0-9]{1,8})*$/.test(value.settings.audio)) result.settings.audio = value.settings.audio;
+      if (SKIP_MODES.includes(value.settings.skip)) result.settings.skip = value.settings.skip;
+      const intro = Number(value.settings.introLength);
+      if (Number.isInteger(intro) && intro >= 10 && intro <= 300) result.settings.introLength = intro;
     }
     result.importedSeed = value.importedSeed === true;
     return result;
@@ -65,6 +73,11 @@
     add: item => update(d => { d.library[item.id] = entry(item); }),
     remove: id => update(d => { delete d.library[id]; }),
     category: (id, category) => update(d => { if (d.library[id]) d.library[id].category = category; }),
+    // Fill in source metadata learned later (for example a MAL ID) without moving the title's shelf.
+    remember: (id, malId) => {
+      if (!data.library[id] || data.library[id].malId === malId || !(Number.isInteger(malId) && malId > 0)) return;
+      update(d => { d.library[id].malId = malId; });
+    },
     setting: (name, value) => update(d => { d.settings[name] = value; }),
     record: (anime, ep, position, duration, seen) => update(d => {
       const old = d.progress[anime.id + '/' + ep.id];

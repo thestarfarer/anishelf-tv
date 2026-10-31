@@ -127,6 +127,7 @@
     const detailsPromise = A.api.call('details', { id: item.id }, request.signal).then(full => {
       if (rev !== revision) return;
       currentAnime = full; copy.querySelector('h1').textContent = titleOf(full); desc.textContent = full.description || 'No synopsis provided by this source.';
+      try { A.state.remember(full.id, full.malId); } catch (_) {}
       meta.textContent = [full.score ? `Score ${full.score}` : '', full.status?.replace(/_/g, ' '), ...(full.genres || [])].filter(Boolean).join(' · ');
       renderActions(actions, full, currentEpisodes);
     }).catch(e => { if (rev === revision) desc.textContent = item.description || 'Title information is unavailable. Episodes may still load.'; });
@@ -191,14 +192,20 @@
   function settings() {
     begin('settings'); header('MAKE IT YOURS', 'A comfortable watch.', 'Language, playback, and your saved library.');
     const preferences = el('section', 'settings-block'); preferences.append(el('h2', '', 'Watching'));
-    function select(label, note, key, choices) {
+    function select(label, note, key, choices, parse = value => value) {
       const row = el('label', 'setting-row'), text = el('div'); text.append(el('span', 'setting-label', label), el('p', '', note));
       const field = document.createElement('select'); field.setAttribute('aria-label', label);
-      for (const [value, name] of choices) { const option = el('option', '', name); option.value = value; option.selected = A.state.settings()[key] === value; field.append(option); }
-      field.onchange = () => { try { A.state.setting(key, field.value); A.toast('Preference saved'); } catch (e) { A.toast(e.message); } }; row.append(text, field); preferences.append(row);
+      const current = String(A.state.settings()[key]);
+      if (!choices.some(([value]) => value === current)) choices = [...choices, [current, current + 'p']];
+      for (const [value, name] of choices) { const option = el('option', '', name); option.value = value; option.selected = current === value; field.append(option); }
+      field.onchange = () => { try { A.state.setting(key, parse(field.value)); A.toast('Preference saved'); } catch (e) { A.toast(e.message); } }; row.append(text, field); preferences.append(row);
     }
     select('Title language', 'Use English titles when the source provides them.', 'title', [['romaji', 'Romaji'], ['english', 'English']]);
     select('Subtitle language', 'You can change this during an episode.', 'subtitle', [['off', 'Off'], ['en-US', 'English'], ['ru-RU', 'Русский'], ['ar-ME', 'العربية'], ['de-DE', 'Deutsch'], ['es-ES', 'Español'], ['es-LA', 'Español (Latin America)'], ['fr-FR', 'Français'], ['it-IT', 'Italiano'], ['pt-BR', 'Português (Brasil)']]);
+    select('Video quality', 'Automatic adapts to your connection. A fixed choice uses that height or the next lower one.', 'quality', [['auto', 'Automatic'], ['1080', '1080p'], ['720', '720p'], ['480', '480p'], ['360', '360p']]);
+    select('Audio language', 'Used when an episode offers more than one audio track.', 'audio', [['ja', '日本語 (Japanese)'], ['en', 'English'], ['', 'Source default']]);
+    select('Opening and ending', 'Times come from the AniSkip community database (api.aniskip.com), matched by MyAnimeList ID.', 'skip', [['button', 'Show a skip button'], ['auto', 'Skip automatically'], ['off', 'Off (no AniSkip lookups)']]);
+    select('Skip intro length', 'The red button jumps this far when no opening times are known.', 'introLength', [['60', '60 sec'], ['75', '75 sec'], ['85', '85 sec'], ['90', '90 sec'], ['100', '100 sec'], ['120', '120 sec']], Number);
     const autoRow = el('div', 'setting-row'), label = el('div'); label.append(el('span', 'setting-label', 'Play the next episode'), el('p', '', 'Continue automatically when an episode ends.'));
     autoRow.append(label, button(A.state.settings().autoNext ? 'On' : 'Off', () => { A.state.setting('autoNext', !A.state.settings().autoNext); settings(); }, 'subtle')); preferences.append(autoRow); content.append(preferences);
     const backup = el('section', 'settings-block'); backup.append(el('h2', '', 'Your library'), el('p', '', 'Import or export an AniShelf JSON backup. Aniyomi backups can be converted with the tool included in the source package. File selection depends on the TV browser.'));
@@ -217,8 +224,8 @@
       const a = document.createElement('a'); a.href = url; a.download = 'anishelf-library.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
       A.toast('Backup requested. Some TV browsers do not support file downloads.');
     }, 'subtle')); backup.append(actions, file); content.append(backup);
-    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.1.0'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental first build, not an official Aniyomi release.'));
-    about.append(el('p', 'technical-note', 'AnimeOnsen browsing, episodes, library, history and subtitles. Android extension APKs, manga, downloads and tracker sync are not implemented. AnimeOnsen may require browser verification on some networks.'));
+    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.2.0'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
+    about.append(el('p', 'technical-note', 'AnimeOnsen browsing, episodes, library, history, subtitles, DASH/HLS playback with quality and audio selection, and AniSkip opening/ending skips. Android extension APKs, manga, downloads and tracker sync are not implemented. AnimeOnsen may require browser verification on some networks.'));
     about.append(button('Connection details', async () => {
       let text;
       try { text = JSON.stringify(await A.api.call('status'), null, 2); } catch (e) { text = e.message; }

@@ -36,7 +36,7 @@ function open(value, options = {}, redirects = 0) {
     const request = https.request(url, {
       method: options.method || 'GET', lookup,
       headers: { 'Accept-Encoding': 'identity', ...options.headers },
-      timeout: 20000,
+      timeout: options.timeout || 20000,
     }, response => {
       if ([301, 302, 303, 307, 308].includes(response.statusCode)) {
         response.resume();
@@ -55,10 +55,12 @@ function open(value, options = {}, redirects = 0) {
       response.finalUrl = url.href;
       resolve(response);
     });
-    request.on('timeout', () => request.destroy(new Error('AnimeOnsen took too long to respond.')));
+    request.on('timeout', () => request.destroy(new Error(`${options.serviceName || 'AnimeOnsen'} took too long to respond.`)));
     request.on('error', reject);
     if (options.signal) {
-      const abort = () => request.destroy(new Error('Request cancelled.'));
+      const abort = () => {
+        const error = new Error('Request cancelled.'); error.code = 'ABORTED'; request.destroy(error);
+      };
       if (options.signal.aborted) abort();
       else {
         options.signal.addEventListener('abort', abort, { once: true });
@@ -84,12 +86,13 @@ async function collect(response, max = 4 * 1024 * 1024) {
   if (!fn) throw new Error('Unsupported response encoding.');
   return new Promise((resolve, reject) => fn(bytes, { maxOutputLength: max }, (e, b) => e ? reject(e) : resolve(b)));
 }
-async function request(value, options) {
+async function request(value, options = {}) {
   const response = await open(value, options);
   const body = await collect(response);
   if (response.statusCode < 200 || response.statusCode >= 300) {
     const challenge = response.headers['cf-mitigated'] === 'challenge';
-    const error = new Error(challenge ? 'AnimeOnsen requires browser verification on this connection. This TV build cannot complete that challenge.' : `AnimeOnsen returned HTTP ${response.statusCode}.`);
+    const name = options.serviceName || 'AnimeOnsen';
+    const error = new Error(challenge ? `${name} requires browser verification on this connection. This TV build cannot complete that challenge.` : `${name} returned HTTP ${response.statusCode}.`);
     error.status = response.statusCode;
     if (challenge) error.code = 'SOURCE_CHALLENGE';
     throw error;

@@ -86,7 +86,8 @@ function convert(buffer) {
       if (!seen && !position) continue;
       output.progress[animeId + '/' + episodeId] = { animeId, episodeId, animeTitle: title,
         episodeTitle: text(ep, 2, 'Episode ' + episodeId), position, duration, seen,
-        updatedAt: history.get(url) || Number(first(ep, 11, 0n)) || 0 };
+        // History times are milliseconds; Aniyomi stores episode lastModifiedAt in seconds.
+        updatedAt: history.get(url) || Number(first(ep, 11, 0n)) * 1000 || 0 };
       stats.importedEpisodes++;
     }
     if (first(anime, 100, 1n) !== 0n) {

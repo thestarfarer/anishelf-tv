@@ -1,6 +1,6 @@
 {
   "name": "anishelf-tv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "An unofficial webOS adaptation of Aniyomi workflows, starting with AnimeOnsen",
   "license": "Apache-2.0",
@@ -8,11 +8,14 @@
     "test": "node --test tests/*.test.cjs",
     "dev": "node tools/dev-server.cjs",
     "package": "ares-package app service --no-minify --outdir dist",
-    "test:ui": "node tests/ui.cjs"
+    "test:ui": "node tests/ui.cjs",
+    "vendor": "node -e \"require('fs').copyFileSync('node_modules/shaka-player/dist/shaka-player.compiled.js','app/vendor/shaka-player.compiled.js')\"",
+    "verify": "node tools/verify-package.cjs"
   },
   "devDependencies": {
     "@webos-tools/cli": "3.2.6",
     "jsdom": "26.1.0",
-    "playwright": "1.52.0"
+    "playwright": "1.52.0",
+    "shaka-player": "5.3.3"
   }
 }

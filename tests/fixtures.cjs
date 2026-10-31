@@ -9,7 +9,8 @@ const names = ['Signal in the Rain', 'Summer at Station Six', 'A Map of Small St
 const items = names.map((title, i) => ({ id: 'test-' + (i + 1), source: 'animeonsen', title, romaji: title,
   english: title, image: 'https://api.animeonsen.xyz/v4/image/210x300/test-' + (i + 1),
   description: 'A fictional title for testing the TV interface. This catalog is not included in the installed app.',
-  score: 8.1, status: 'finished_airing', genres: ['Adventure', 'Slice of Life'] }));
+  score: 8.1, status: 'finished_airing', genres: ['Adventure', 'Slice of Life'], malId: 1000 + i }));
+const DASH = 'https://cdn.animeonsen.xyz/video/mp4-dash/test-1/1/manifest.mpd';
 const episodes = [1, 2, 3].map(i => ({ id: String(i), animeId: 'test-1', number: i, title: ['The first light', 'An unexpected letter', 'The road home'][i - 1] }));
 function fixtureSource() {
   return {
@@ -17,7 +18,8 @@ function fixtureSource() {
     search: async query => ({ items: items.filter(i => i.title.toLowerCase().includes(query.toLowerCase())), next: false }),
     details: async id => items.find(i => i.id === id) || items[0],
     episodes: async id => episodes.map(ep => ({ ...ep, animeId: id })),
-    stream: async () => ({ url: 'https://media.animeonsen.xyz/test.mp4',
+    // Episode 1 is DASH like AnimeOnsen's real streams; other episodes keep a progressive MP4 path.
+    stream: async (id, episode) => ({ url: episode === '1' ? DASH : 'https://media.animeonsen.xyz/test.mp4',
       subtitles: [{ lang: 'en-US', label: 'English', url: 'https://media.animeonsen.xyz/test.srt' }] }),
   };
 }
@@ -29,6 +31,11 @@ async function fixtureOpen(url, options = {}) {
     const [a, b] = palettes[number % palettes.length];
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="210" height="300"><defs><linearGradient id="g" x2="1" y2="1"><stop stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="210" height="300" fill="url(#g)"/><circle cx="145" cy="80" r="49" fill="#fff" opacity=".22"/><path d="M0 240L65 140L130 230L210 100V300H0" fill="#12172a" opacity=".5"/><path d="M0 265L100 180L210 255V300H0" fill="#101020" opacity=".5"/><text x="20" y="48" fill="#fff" font-size="12" font-family="sans-serif" letter-spacing="3">TEST CATALOG</text><text x="20" y="270" fill="#fff" font-size="24" font-family="serif">${String(number).padStart(2, '0')}</text></svg>`;
     bytes = Buffer.from(svg); type = 'image/svg+xml';
+  } else if (url.includes('/video/mp4-dash/')) {
+    const name = path.basename(new URL(url).pathname);
+    try { bytes = await fs.promises.readFile(path.join(__dirname, 'fixtures/dash', name)); }
+    catch (_) { const missing = Readable.from([]); missing.statusCode = 404; missing.headers = {}; missing.finalUrl = url; return missing; }
+    type = name.endsWith('.mpd') ? 'application/dash+xml' : 'video/iso.segment';
   } else if (url.endsWith('.srt')) {
     bytes = Buffer.from('1\n00:00:00,100 --> 00:00:04,800\nSubtitle playback test.\n'); type = 'text/plain';
   } else {
@@ -47,4 +54,6 @@ async function fixtureOpen(url, options = {}) {
   const stream = Readable.from(options.method === 'HEAD' ? [] : [bytes]);
   stream.statusCode = status; stream.headers = headers; stream.finalUrl = url; return stream;
 }
-module.exports = { fixtureSource, fixtureOpen, items, episodes };
+// Opening at 3–9 s so the 30 s fixture video reaches it quickly.
+async function fixtureSkipTimes() { return [{ type: 'op', start: 3, end: 9 }]; }
+module.exports = { fixtureSource, fixtureOpen, fixtureSkipTimes, items, episodes, DASH };

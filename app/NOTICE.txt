@@ -1,4 +1,4 @@
-AniShelf TV 0.1.0
+AniShelf TV 0.2.0
 Unofficial personal webOS adaptation. Not affiliated with or endorsed by Aniyomi,
 Yuzono, AnimeOnsen, or LG Electronics.
 
@@ -28,11 +28,24 @@ BackupDecoder.kt, and PlayerViewModel.kt.
 Changes: implemented a bounded JavaScript protobuf reader and one-way converter
 for AnimeOnsen library entries, watched status, and playback positions.
 
+Shaka Player 5.3.3 (app/vendor/shaka-player.compiled.js)
+Copyright 2016 Google LLC. License: Apache-2.0 (licenses/Apache-2.0.txt).
+https://github.com/shaka-project/shaka-player
+Bundled unmodified, from the npm package's dist/shaka-player.compiled.js. It plays
+DASH and HLS through Media Source and provides quality and audio-track selection.
+
+AniSkip
+Opening/ending times are looked up from the community AniSkip API
+(https://api.aniskip.com/v2/skip-times), as Aniyomi's player does. No AniSkip code
+is included. The request carries only a MyAnimeList ID, episode number and episode
+length, and can be switched off in Settings.
+
 Build-only dependencies
 @webos-tools/cli 3.2.6: LG Electronics, Apache-2.0.
 Playwright 1.52.0: Microsoft, Apache-2.0 (development tests only).
 jsdom 26.1.0: jsdom contributors, MIT (development tests only).
-Neither build dependency is bundled into the TV application. The TV supplies
+Shaka Player 5.3.3: Google LLC, Apache-2.0 (vendored into the app, see above).
+No other build dependency is bundled into the TV application. The TV supplies
 the webos-service runtime module. No remote JavaScript or auto-updater is used.
 
 Test catalog entries, poster graphics, subtitles, and sample media are original

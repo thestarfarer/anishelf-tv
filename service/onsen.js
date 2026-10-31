@@ -31,6 +31,7 @@ function normalize(item, preferred = 'romaji') {
     genres: (mal.genres || []).map(g => String(g.name)),
     status: mal.status || '', score: mal.mean_score || null,
     studio: (mal.studios || []).map(s => s.name).join(', '),
+    malId: Number.isInteger(Number(item.mal_id)) && Number(item.mal_id) > 0 ? Number(item.mal_id) : null,
   };
 }
 class Onsen {
@@ -113,10 +114,10 @@ class Onsen {
   async episodes(contentId, preferred = 'romaji') {
     const data = await this.api(`/content/${id(contentId)}/episodes`);
     if (!data || Array.isArray(data) || typeof data !== 'object') throw new Error('AnimeOnsen episode format has changed.');
-    return Object.entries(data).map(([number, ep]) => ({
+    return Object.entries(data).map(([number, ep = {}]) => ({
       id: id(number), animeId: contentId, number: Number(number),
-      title: (preferred === 'english' ? ep.contentTitle_episode_en : ep.contentTitle_episode_jp) ||
-        ep.contentTitle_episode_en || ep.contentTitle_episode_jp || `Episode ${number}`,
+      title: (preferred === 'english' ? ep?.contentTitle_episode_en : ep?.contentTitle_episode_jp) ||
+        ep?.contentTitle_episode_en || ep?.contentTitle_episode_jp || `Episode ${number}`,
     })).sort((a, b) => (a.number - b.number) || a.id.localeCompare(b.id, 'en', { numeric: true }));
   }
   async stream(contentId, episodeId) {

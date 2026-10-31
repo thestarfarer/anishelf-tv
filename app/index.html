@@ -9,6 +9,7 @@
   <script defer src="state.js"></script>
   <script defer src="navigation.js"></script>
   <script defer src="api.js"></script>
+  <script defer src="vendor/shaka-player.compiled.js"></script>
   <script defer src="player.js"></script>
   <script defer src="app.js"></script>
 </head>
@@ -23,7 +24,7 @@
         <button class="nav-item" data-route="history"><span class="nav-icon" aria-hidden="true">◷</span>History</button>
         <button class="nav-item" data-route="settings"><span class="nav-icon" aria-hidden="true">≡</span>Settings</button>
       </nav>
-      <div class="sidebar-bottom"><div class="source-indicator"><span></span>AnimeOnsen</div><p>A little space for<br>your next episode.</p><small>Personal port · 0.1.0</small></div>
+      <div class="sidebar-bottom"><div class="source-indicator"><span></span>AnimeOnsen</div><p>A little space for<br>your next episode.</p><small>Personal port · 0.2.0</small></div>
     </aside>
     <main id="content" tabindex="-1" aria-live="polite"></main>
     <footer id="remote-hint"><span><kbd>OK</kbd> Select</span><span><kbd>BACK</kbd> Go back</span><span>Arrow keys or Magic Remote</span></footer>
@@ -33,12 +34,13 @@
     <div id="subtitle-overlay" aria-live="off"></div>
     <div id="player-loading" class="player-loading" hidden><div class="spinner"></div><span>Getting your episode ready…</span></div>
     <div id="player-error" class="player-error" hidden></div>
+    <button id="skip-segment" class="skip-segment" hidden></button>
     <div id="player-controls">
       <div class="player-top"><button id="player-back" class="subtle">Back to episodes</button><div><div id="player-series"></div><h2 id="player-episode"></h2></div></div>
       <div class="player-bottom">
         <div class="timeline"><span id="play-time">0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek video"><span id="play-duration">0:00</span></div>
-        <div class="player-buttons"><button id="rewind">−10 sec</button><button id="toggle-play" class="primary">Pause</button><button id="forward">+10 sec</button><button id="subtitle-button">Subtitles</button><button id="next-episode">Next episode</button></div>
-        <p class="player-help">Left / right to seek · OK to pause · Yellow for subtitles · Back to episodes</p>
+        <div class="player-buttons"><button id="rewind">−10 sec</button><button id="toggle-play" class="primary">Pause</button><button id="forward">+10 sec</button><button id="skip-intro">Skip intro</button><button id="subtitle-button">Subtitles</button><button id="audio-button">Audio</button><button id="quality-button">Quality</button><button id="next-episode">Next episode</button></div>
+        <p class="player-help">Left / right to seek · OK to pause · <span class="key red"></span>Skip intro · <span class="key green"></span>Audio · <span class="key yellow"></span>Subtitles · <span class="key blue"></span>Quality · Back to episodes</p>
       </div>
     </div>
   </section>

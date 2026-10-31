@@ -89,6 +89,13 @@ test('Aniyomi import handles both schemas and gzip, preserves 64-bit source IDs,
     assert.equal(result.output.progress['demo/2'].updatedAt, 1700000000000);
   }
 });
+test('episode lastModifiedAt (seconds) becomes milliseconds when no history entry exists', () => {
+  const ep = Buffer.concat([field(1, 'demo/video/3'), field(2, 'Episode three'), field(4, 1), field(11, 1700000000)]);
+  const anime = Buffer.concat([field(1, 8542735178285060053n), field(2, 'demo'), field(3, 'Imported title'), field(16, ep)]);
+  const result = convert(Buffer.concat([field(501, anime)]));
+  assert.equal(result.output.progress['demo/3'].updatedAt, 1700000000000);
+  assert.equal(result.output.library.demo.category, 'Completed');
+});
 test('backup reader rejects truncation and runaway lengths', () => {
   assert.throws(() => fields(Buffer.from([10, 255, 255])));
   assert.throws(() => fields(Buffer.from([0])));

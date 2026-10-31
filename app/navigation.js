@@ -37,6 +37,10 @@
       const cost = main + cross * (overlap ? .7 : 3.2) + (overlap ? 0 : 100);
       if (cost < score) { score = cost; best = element; }
     }
+    // Leaving the page sideways returns to the page's own menu entry, not whichever is level with it.
+    if (direction === 'left' && best?.closest('.sidebar') && !current.closest('.sidebar')) {
+      best = document.querySelector('.sidebar .nav-item.active') || best;
+    }
     focus(best);
   }
   document.addEventListener('keydown', event => {

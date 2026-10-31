@@ -1,20 +1,25 @@
 # AniShelf TV — an experimental Aniyomi adaptation
 
-This first build targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
+This build (0.2.0) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
 33.22.52). It runs entirely on the TV and starts with the **AnimeOnsen** source.
 It is an unofficial adaptation, with a new TV interface and a JavaScript port
 of the source adapter. It is not the Android APK running inside webOS, and it
 does not implement all of Aniyomi.
 
-**Live AnimeOnsen playback is unverified.** During development, the site's
-website, API, and authentication endpoint presented Cloudflare browser
-challenges. This build does not solve those challenges. A residential TV
-connection might behave differently, but that has not been tested. If Browse
-shows a verification error, installing this package has not bypassed it.
+**Live AnimeOnsen playback is unverified.** On 2026-10-31 every AnimeOnsen host
+(website, auth, API, search and CDN) answered the build machine, a datacenter
+IP, with a Cloudflare challenge (`cf-mitigated: challenge`). This build does not
+solve those challenges. Cloudflare usually treats home connections differently
+from datacenters, but that has not been tested from a TV. If Browse shows a
+verification error, installing this package has not bypassed it.
+
+AnimeOnsen serves episodes as MPEG-DASH (`.mpd`). Version 0.1.0 refused DASH,
+so no episode could have played even without the challenge. 0.2.0 plays DASH and
+HLS through Shaka Player.
 
 ## Install on your already-rooted C2
 
-1. Download `com.homebrew.anishelf_0.1.0_all.ipk` to your computer.
+1. Download `com.homebrew.anishelf_0.2.0_all.ipk` to your computer.
 2. Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop)
    and connect using your existing rooted-TV connection.
 3. Choose **Apps → Install**, select the `.ipk`, and wait for installation.
@@ -35,14 +40,24 @@ No connection to your TV was made while building this package.
 - Remote and pointer navigation, with a TV layout for 1920×1080 and 1280×720.
 - A saved library with Watching, Planned and Completed shelves.
 - Watched status, viewing history, and saved playback positions.
-- Native HTML video playback for HLS and direct video supported by your TV.
+- DASH and HLS playback through the bundled Shaka Player (Media Source), plus
+  direct MP4. The TV's native player is the fallback for HLS/MP4 if Media Source
+  is unavailable.
+- Video quality selection: Automatic (adaptive) or a fixed rendition, remembered
+  as a preferred height for later episodes.
+- Audio track selection when an episode has more than one, with a preferred
+  audio language (Japanese by default).
+- Opening, ending and recap skipping using AniSkip times matched by MyAnimeList
+  ID, as in Aniyomi: a skip button (default) or automatic skipping. Without
+  AniSkip times, the Skip intro button and red key jump a configurable length
+  (85 seconds by default, as in Aniyomi).
 - External VTT, SRT and basic ASS subtitles, including a language selector.
 - Optional automatic next episode, off by default.
 - AniShelf JSON backup merge/export and an offline Aniyomi backup converter.
 
 Not implemented: Android extension APK loading, other source adapters, manga,
-downloads, tracker sync, DRM, DASH playback, advanced ASS styling or simultaneous
-phone/TV library synchronization. File pickers/downloads depend on the TV web
+downloads, tracker sync, DRM, Cloudflare challenge solving, the AnimeOnsen genre
+filter, advanced ASS styling or simultaneous phone/TV library synchronization. File pickers/downloads depend on the TV web
 engine; use the seed-library method below if they are unavailable.
 
 ## Remote controls
@@ -54,7 +69,12 @@ engine; use the seed-library method below if they are unavailable.
 | Back | Close a dialog, leave playback, or return to the previous page |
 | Play / Pause | Toggle playback |
 | Left / Right with player controls hidden | Seek 10 seconds |
+| OK while "Skip opening" is shown | Skip the opening/ending |
+| Red during playback | Skip the opening (or the intro length) |
+| Green during playback | Audio track selection |
 | Yellow during playback | Subtitle selection |
+| Blue during playback | Video quality selection |
+| Fast-forward / Rewind | Seek 30 seconds |
 | Next episode button | Open the next available episode |
 
 The system Home button keeps its usual LG behavior. Leaving the app pauses
@@ -98,12 +118,19 @@ npm test
 npx playwright install chromium
 npm run test:ui
 npm run package
+npm run verify
 ```
+
+`npm run verify` unpacks the built IPK, checks every packaged file against the
+source tree, and rewrites `dist/SHA256SUMS.txt` and `dist/source-verification.json`.
+`app/vendor/shaka-player.compiled.js` is the unmodified file from the pinned
+`shaka-player` npm package; `npm run vendor` copies it again after an update.
 
 `npm run dev` runs a localhost preview with the real source adapter. It is a
 development tool, not a required companion server. UI tests instead use
-fictional catalog entries and a generated test video in `tests/fixtures/`.
-They never download anime episodes. For an existing Chromium installation,
+fictional catalog entries and generated test media in `tests/fixtures/`: an
+MP4 and a 30-second DASH stream with 360p/180p video and Japanese/English audio
+tracks. They never download anime episodes. For an existing Chromium installation,
 set `ANISHELF_CHROMIUM` to its executable path before running the UI tests.
 
 The packager preserves JavaScript source without minification. Runtime code
@@ -119,16 +146,24 @@ calls Homebrew's root command service, launches a shell, or changes system
 settings. It requests no privileged system API permissions.
 
 Media and API requests go through a helper bound to **127.0.0.1 only**, on a
-random port, with a random 256-bit session token. The helper exists while the
+random port, with a random 256-bit session token. Images, subtitles and HLS
+playlists use opaque per-URL IDs. DASH segment templates cannot be listed in
+advance, so each approved media origin gets one opaque route that mirrors its
+paths. The helper exists while the
 app holds a service subscription. It is not accessible to other machines on
 your LAN. This is a design restriction, not an independent security audit.
 
 Outbound source requests use HTTPS and normal certificate verification.
 Bearer tokens go only to the matching API/search hosts and are not forwarded
-across origins. Media hosts must originate from AnimeOnsen's API; literal IPs,
-private-address DNS results, embedded credentials and nonstandard ports are
-rejected. The helper does not accept arbitrary URLs or shell commands from the
-frontend. There is no telemetry, remote JavaScript loader, or automatic updater.
+across origins. Media hosts must come from AnimeOnsen's API or from manifests it
+returned; literal IPs, private-address DNS results, embedded credentials and
+nonstandard ports are rejected. The helper does not accept arbitrary URLs or
+shell commands from the frontend. There is no telemetry, remote JavaScript
+loader, or automatic updater.
+
+Opening/ending skipping asks `api.aniskip.com` for the MyAnimeList ID, episode
+number and episode length of what you are watching. Choose **Settings → Opening
+and ending → Off** to make no AniSkip requests.
 
 The public application client credentials in `service/public-client.json`
 come from the existing open-source AnimeOnsen adapter. They are not credentials
