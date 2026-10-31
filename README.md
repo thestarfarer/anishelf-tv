@@ -4,6 +4,8 @@
 > (webOS TV 10.2.1), firmware 33.22.52, rooted.
 > Other models and webOS versions are untested.
 
+![AniShelf TV's Browse page showing the AnimeOnsen catalogue, captured on an LG OLED C2](docs/browse.webp)
+
 # AniShelf TV — an experimental Aniyomi adaptation
 
 This build (0.3.2) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
