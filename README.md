@@ -1,3 +1,9 @@
+# HUMANS BEWARE AI SLOP
+
+> **Only tested on one TV:** LG OLED55C2RLA (LG OLED C2, 55"), webOS 25
+> (webOS TV 10.2.1), firmware 33.22.52, rooted.
+> Other models and webOS versions are untested.
+
 # AniShelf TV — an experimental Aniyomi adaptation
 
 This build (0.3.2) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
