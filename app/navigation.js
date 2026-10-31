@@ -11,7 +11,7 @@
     return document.getElementById('shell');
   }
   function focusables(root) {
-    return Array.from((root || scope()).querySelectorAll('button, input, select, textarea, [tabindex="0"]')).filter(visible);
+    return Array.from((root || scope()).querySelectorAll('button, input:not([tabindex="-1"]), select, textarea, [tabindex="0"]')).filter(visible);
   }
   function focus(element) {
     if (!element || !visible(element)) return;
@@ -52,6 +52,13 @@
       if (!modal) return;
       const elements = focusables(), i = elements.indexOf(target);
       event.preventDefault(); focus(elements[(i + (event.shiftKey ? -1 : 1) + elements.length) % elements.length]); return;
+    }
+    // Back while typing closes the TV keyboard (by leaving the field) instead of leaving the page.
+    if (editing && target.tagName !== 'SELECT' && !modal && (code === 461 || event.key === 'Escape')) {
+      event.preventDefault();
+      const holder = target.parentElement && target.parentElement.closest('[tabindex="0"]');
+      target.blur(); if (holder) focus(holder);
+      return;
     }
     if (code === 461 || event.key === 'Escape' || (!editing && event.key === 'Backspace')) {
       event.preventDefault();

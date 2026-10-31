@@ -70,8 +70,25 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search anime');
     checks.push('Moving the pointer over buttons does not take focus from the search field');
     assert.equal(await page.evaluate(() => document.body.innerText.includes('\u2026') || document.querySelector('input[type=search]').placeholder.includes('\u2026')), false);
-    await page.getByRole('searchbox').fill('rain'); await page.getByRole('button', { name: 'Search', exact: true }).click();
+    // The TV opens its keyboard whenever the text field has focus: nothing may focus it except the user.
+    const activeIsField = () => page.evaluate(() => document.activeElement.matches('input[type=search]'));
+    await page.locator('[data-route="browse"]').click(); await page.locator('.anime-card').first().waitFor();
+    assert.equal(await activeIsField(), false);
+    await page.getByRole('searchbox').fill('rain'); await page.keyboard.press('Enter');
+    await until(page, () => document.querySelectorAll('.anime-card').length === 1 && document.activeElement.classList.contains('anime-card'));
+    assert.match(await page.locator('.card-title').textContent(), /Signal/);
+    checks.push('Enter in the search field submits, leaves the field (keyboard closes) and focuses the first result');
+    await page.getByRole('button', { name: 'Search', exact: true }).click();
     await until(page, () => document.querySelectorAll('.anime-card').length === 1);
+    assert.equal(await activeIsField(), false);
+    checks.push('The Search button does not focus the text field');
+    await page.locator('.search-field').focus(); await page.keyboard.press('Enter');
+    assert.equal(await activeIsField(), true);
+    await page.keyboard.press('Escape');
+    assert.equal(await activeIsField(), false);
+    assert.equal(await page.evaluate(() => document.activeElement.classList.contains('search-field')), true);
+    assert.equal(await page.locator('h1').textContent(), 'Find your next watch.');
+    checks.push('OK on the search box starts typing; Back stops typing without leaving Browse');
     assert.match(await page.locator('.card-title').textContent(), /Signal/); checks.push('Search returns matching titles');
     await page.locator('.anime-card').first().click();
     await page.locator('[data-episode="1"]').waitFor();

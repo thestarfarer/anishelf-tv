@@ -3,7 +3,7 @@
   const A = window.AniShelf;
   const content = document.getElementById('content');
   let route = 'browse', history = [], currentAnime, currentEpisodes = [], request, revision = 0, toastTimer;
-  let catalog = [], nextPage = false, pageStart = 0, query = '', libraryFilter = 'All';
+  let catalog = [], nextPage = false, pageStart = 0, query = '', libraryFilter = 'All', focusResults = false;
   const el = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = text; return node; };
   const button = (text, fn, cls) => { const b = el('button', cls, text); b.onclick = () => { try { const r = fn(); if (r?.catch) r.catch(e => A.toast(e.message)); } catch (e) { A.toast(e.message); } }; return b; };
   A.toast = message => { const toast = document.getElementById('toast'); toast.textContent = message; toast.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { toast.hidden = true; }, 4500); };
@@ -70,15 +70,27 @@
   async function browse(reset = true) {
     const rev = begin('browse');
     header('DISCOVER · ANIMEONSEN', 'Find your next watch.', 'Your familiar source, made for the big screen.', 'TV-only · Personal port');
-    const form = el('form', 'search-form'), input = document.createElement('input');
+    // webOS opens its keyboard whenever a text field gets focus. The remote therefore lands on a box
+    // around the field (OK starts typing), and focus never returns to the field on its own.
+    const form = el('form', 'search-form'), field = el('div', 'search-field'), input = document.createElement('input');
+    field.tabIndex = 0; field.setAttribute('role', 'button'); field.setAttribute('aria-label', 'Search anime, press OK to type');
     input.type = 'search'; input.placeholder = 'Search anime...'; input.value = query; input.maxLength = 200; input.setAttribute('aria-label', 'Search anime');
-    const submit = el('button', 'primary', 'Search'); submit.type = 'submit'; form.append(input, submit);
+    input.tabIndex = -1; field.append(input);
+    field.addEventListener('keydown', event => { if (event.target === field && event.key === 'Enter') { event.preventDefault(); input.focus(); } });
+    field.addEventListener('click', event => { if (event.target === field) input.focus(); });
+    const submit = el('button', 'primary', 'Search'); submit.type = 'submit'; form.append(field, submit);
     if (query) form.append(button('Clear', () => { query = ''; return browse(); }, 'subtle'));
-    form.onsubmit = event => { event.preventDefault(); query = input.value.trim(); browse(); }; content.append(form);
+    form.onsubmit = event => {
+      event.preventDefault(); query = input.value.trim();
+      input.blur(); focusResults = true; // closes the keyboard; results take focus when they arrive
+      browse();
+    };
+    content.append(form);
     const section = el('div', 'section-line'); section.append(el('h2', '', query ? 'Search results' : 'Explore the catalog')); content.append(section);
     const target = el('section'); content.append(target);
     if (!reset && catalog.length) { grid(catalog, target); pagination(target, rev); firstContent(); return; }
     const busy = loading(target); firstContent();
+    const toResults = focusResults; focusResults = false;
     try {
       const result = await A.api.call(query ? 'search' : 'catalog', query ? { q: query } : { start: 0 }, request.signal);
       if (rev !== revision) return;
@@ -86,6 +98,7 @@
       if (!catalog.length) { const box = el('div', 'empty'); box.append(el('h2', '', 'No matches yet'), el('p', '', 'Try another spelling or the Japanese title.')); target.append(box); }
       else grid(catalog, target);
       pagination(target, rev);
+      if (toResults) A.nav.focus(target.querySelector('.anime-card'));
     } catch (e) { if (rev !== revision) return; busy.remove(); errorState(e.name === 'AbortError' ? new Error('The source request timed out.') : e, browse, target); }
   }
   function pagination(target, rev) {
