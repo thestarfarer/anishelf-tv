@@ -78,8 +78,15 @@
     if (!context) return;
     showControls();
     A.openModal(title, body => {
-      const list = document.createElement('div'); list.className = 'modal-list';
+      let list = document.createElement('div'); list.className = 'modal-list';
       for (const option of options) {
+        // { heading } and { text } entries are section titles and explanatory lines, not choices.
+        if (option.heading || option.text) {
+          body.append(list); list = document.createElement('div'); list.className = 'modal-list';
+          const line = document.createElement(option.heading ? 'div' : 'p');
+          line.className = option.heading ? 'modal-heading' : 'modal-note'; line.textContent = option.heading || option.text;
+          body.append(line); continue;
+        }
         const button = document.createElement('button'); button.textContent = option.label;
         if (option.note) { const note = document.createElement('span'); note.className = 'track-note'; note.textContent = option.note; button.append(note); }
         if (option.selected) button.className = 'selected';
@@ -93,12 +100,22 @@
     A.nav.focus(document.querySelector('#modal-body .selected'));
   }
   function remember(name, value) { try { A.state.setting(name, value); } catch (e) { A.toast(e.message); } }
+  const SUBTITLE_SIZES = [[75, 'Small'], [100, 'Medium'], [125, 'Large'], [150, 'Extra large'], [175, 'Huge']];
+  function applySubtitleSize() {
+    subtitleLayer.style.setProperty('--subtitle-scale', String((Number(A.state.settings().subtitleSize) || 100) / 100));
+  }
   function subtitleMenu() {
     if (!context) return;
-    menu('Subtitles', [{ lang: 'off', label: 'Off' }, ...context.tracks].map(track => ({
-      label: track.label, selected: A.state.settings().subtitle === track.lang,
-      action: () => { remember('subtitle', track.lang); selectSubtitle(track.lang === 'off' ? null : track); },
-    })));
+    const size = Number(A.state.settings().subtitleSize) || 100;
+    menu('Subtitles', [
+      ...[{ lang: 'off', label: 'Off' }, ...context.tracks].map(track => ({
+        label: track.label, selected: A.state.settings().subtitle === track.lang,
+        action: () => { remember('subtitle', track.lang); selectSubtitle(track.lang === 'off' ? null : track); },
+      })),
+      { heading: 'Text size' },
+      ...SUBTITLE_SIZES.map(([value, label]) => ({ label, selected: size === value,
+        action: () => { remember('subtitleSize', value); applySubtitleSize(); } })),
+    ]);
   }
 
   // Shaka Player handles DASH and HLS through Media Source, which also exposes the qualities and
@@ -125,7 +142,7 @@
   }
   function stopMedia() {
     video.pause();
-    if (engine) return engine.unload().catch(() => {});
+    if (engine && engine.getMediaElement()) return engine.unload().catch(() => {});
     video.removeAttribute('src'); video.replaceChildren(); video.load();
     return Promise.resolve();
   }
@@ -186,7 +203,8 @@
     const auto = !engine || engine.getConfiguration().abr.enabled;
     qualityButton.disabled = tracks.length < 2;
     qualityButton.textContent = active ? (auto ? `Auto · ${active.height}p` : `${active.height}p`) : 'Quality';
-    audioButton.disabled = audioTracks().length < 2;
+    // Always reachable: besides choosing a track it offers the built-in-player fallback.
+    audioButton.disabled = !context;
   }
   function applyQualityPreference() {
     const preference = A.state.settings().quality, tracks = videoTracks();
@@ -212,12 +230,45 @@
         } })),
     ]);
   }
+  function details() {
+    const variants = engine && usingEngine ? engine.getVariantTracks() : [];
+    const unique = list => Array.from(new Set(list.filter(Boolean)));
+    const audioCodecs = unique(variants.map(t => t.audioCodec)), support = {};
+    for (const codec of audioCodecs) {
+      try { support[codec] = window.MediaSource ? window.MediaSource.isTypeSupported(`audio/mp4; codecs="${codec}"`) : null; } catch (_) { support[codec] = null; }
+    }
+    return { engine: usingEngine ? 'shaka' : 'native', format: context ? context.format : null,
+      audioCodecs, videoCodecs: unique(variants.map(t => t.videoCodec)), mimeTypes: unique(variants.map(t => t.mimeType)),
+      mediaSourceSupportsAudio: support, variants: variants.length, variantsWithoutAudio: variants.filter(t => !t.audioCodec && t.audioId == null).length,
+      audioTracks: audioTracks().map(t => t.label), audioDecodedBytes: video.webkitAudioDecodedByteCount ?? null,
+      videoDecodedBytes: video.webkitVideoDecodedByteCount ?? null, muted: video.muted, volume: video.volume, at: Math.round(video.currentTime) };
+  }
+  let lastDetails = null;
+  function soundNote() {
+    const d = details();
+    if (!usingEngine) return 'Playing with the TV\'s built-in player.';
+    if (!d.audioCodecs.length) return 'This stream reports no audio track to AniShelf\'s player.';
+    const decoded = d.audioDecodedBytes == null ? '' : ` · ${Math.round(d.audioDecodedBytes / 1024)} KB of sound decoded`;
+    return `Audio format ${d.audioCodecs.join(', ')}${d.audioCodecs.some(c => d.mediaSourceSupportsAudio[c] === false) ? ' (not supported by the TV for this player)' : ''}${decoded}.`;
+  }
+  function switchEngine(engineName, message) {
+    if (!context) return;
+    remember('engine', engineName); save();
+    A.toast(message);
+    open(context.anime, context.episode, context.episodes, context.onClose);
+  }
   function audioMenu() {
     if (!context) return;
     const tracks = audioTracks();
-    if (tracks.length < 2) { A.toast('This episode has a single audio track.'); return; }
-    menu('Audio', tracks.map(track => ({ label: track.label, selected: track.active,
-      action: () => { track.select(); if (track.language) remember('audio', track.language); setTimeout(updateTrackButtons, 0); } })));
+    menu('Audio', [
+      ...tracks.map(track => ({ label: track.label, selected: track.active,
+        action: () => { track.select(); if (track.language) remember('audio', track.language); setTimeout(updateTrackButtons, 0); } })),
+      { text: (tracks.length ? '' : 'No separate audio tracks. ') + soundNote() },
+      { heading: 'No sound or picture?' },
+      usingEngine
+        ? { label: 'Use the TV\'s built-in player', action: () => switchEngine('native', 'Using the TV\'s built-in player. Change it back here or in Settings.') }
+        : { label: 'Use the AniShelf player', action: () => switchEngine('shaka', 'Using the AniShelf player.') },
+    ]);
   }
 
   // Opening/ending times come from AniSkip, matched by MyAnimeList ID like Aniyomi's player.
@@ -290,15 +341,19 @@
     document.getElementById('player-series').textContent = anime.title;
     document.getElementById('player-episode').textContent = `Episode ${episode.id} · ${episode.title}`;
     document.getElementById('next-episode').disabled = episodes.findIndex(ep => ep.id === episode.id) >= episodes.length - 1;
-    usingEngine = false; updateTrackButtons();
+    usingEngine = false; updateTrackButtons(); applySubtitleSize();
     showControls(true);
     try {
-      const player = await getEngine().catch(() => null);
+      const native = A.state.settings().engine === 'native';
+      const player = native ? null : await getEngine().catch(() => null);
       await stopMedia();
+      // The TV's player needs the element to itself; Shaka is attached again when it is used.
+      if (native && engine && engine.getMediaElement()) await engine.detach().catch(() => {});
+      if (player && !player.getMediaElement()) await player.attach(video);
       if (requestId !== generation) return;
       const stream = await A.api.call('stream', { id: anime.id, episode: episode.id }, signal);
       if (requestId !== generation) return;
-      context.tracks = stream.subtitles;
+      context.tracks = stream.subtitles; context.format = stream.format;
       const preference = A.state.settings().subtitle;
       if (preference !== 'off') selectSubtitle(stream.subtitles.find(t => t.lang === preference) ||
         stream.subtitles.find(t => t.lang.split('-')[0] === preference.split('-')[0]) || stream.subtitles[0]);
@@ -313,7 +368,9 @@
         recording = true;
         applyQualityPreference(); updateTrackButtons();
       } else if (stream.format === 'dash') {
-        throw new Error('This TV web engine lacks Media Source support, which DASH playback needs.');
+        // webOS's own player has basic support for on-demand DASH.
+        const source = document.createElement('source'); source.src = stream.url;
+        source.type = 'application/dash+xml'; video.append(source); video.load();
       } else if (stream.format === 'hls') {
         // An explicit MIME type selects LG's HLS pipeline even for opaque proxy URLs.
         const source = document.createElement('source'); source.src = stream.url;
@@ -321,6 +378,7 @@
       } else video.src = stream.url;
       loadSkips(requestId);
       await video.play();
+      setTimeout(() => { if (requestId === generation && context) { lastDetails = details(); updateTrackButtons(); } }, 8000);
     } catch (e) {
       if (requestId !== generation || interrupted(e)) return;
       const message = await describeFailure(e);
@@ -329,6 +387,7 @@
   }
   function close() {
     if (!context) return;
+    lastDetails = details();
     save(); recording = false; const onClose = context.onClose; context = null; ++generation; ++subtitleGeneration;
     pending?.abort(); pending = null; clearTimeout(hideTimer);
     stopMedia(); cues = []; subtitleLayer.textContent = ''; resetSkips(); usingEngine = false;
@@ -349,7 +408,13 @@
     document.getElementById('play-duration').textContent = time(video.duration);
   });
   video.addEventListener('durationchange', () => { if (context) document.getElementById('play-duration').textContent = time(video.duration); });
-  video.addEventListener('playing', () => { loading.hidden = true; errorBox.hidden = true; showControls(); });
+  video.addEventListener('playing', () => {
+    loading.hidden = true; errorBox.hidden = true; showControls();
+    if (video.muted) video.muted = false;
+    if (!video.volume) video.volume = 1;
+    updateTrackButtons();
+  });
+  video.addEventListener('loadeddata', () => { if (context) updateTrackButtons(); });
   video.addEventListener('waiting', () => { if (context && !video.paused) loading.hidden = false; });
   video.addEventListener('pause', () => { document.getElementById('toggle-play').textContent = 'Play'; save(); showControls(); });
   video.addEventListener('play', () => { document.getElementById('toggle-play').textContent = 'Pause'; });
@@ -388,7 +453,7 @@
   skipButton.onclick = () => { if (activeSkip) { skipTo(activeSkip, false); updateSkip(); } };
   document.addEventListener('visibilitychange', () => { if (document.hidden && context) { save(); video.pause(); } });
   window.addEventListener('pagehide', save);
-  A.player = { open, close, next, parseVtt, active: () => !!context,
+  A.player = { open, close, next, parseVtt, active: () => !!context, details: () => (context ? details() : lastDetails),
     info: () => {
       const tracks = videoTracks(), audio = audioTracks();
       return { engine: usingEngine ? 'shaka' : 'native', height: tracks.find(t => t.active)?.height || video.videoHeight || null,

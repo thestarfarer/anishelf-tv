@@ -7,7 +7,7 @@ const { Onsen, HEADERS, HOSTS, API, id } = require('./onsen');
 const { toVtt } = require('./subtitles');
 const { createSkipTimes } = require('./aniskip');
 const { rewriteDash } = require('./dash');
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 
 function rewriteHls(text, base, register) {
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist.');

@@ -1,6 +1,6 @@
 # AniShelf TV — an experimental Aniyomi adaptation
 
-This build (0.3.0) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
+This build (0.3.1) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
 33.22.52). It runs entirely on the TV and starts with the **AnimeOnsen** source.
 It is an unofficial adaptation, with a new TV interface and a JavaScript port
 of the source adapter. It is not the Android APK running inside webOS, and it
@@ -19,7 +19,7 @@ HLS through Shaka Player.
 
 ## Install on your already-rooted C2
 
-1. Download `com.homebrew.anishelf_0.3.0_all.ipk` to your computer.
+1. Download `com.homebrew.anishelf_0.3.1_all.ipk` to your computer.
 2. Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop)
    and connect using your existing rooted-TV connection.
 3. Choose **Apps → Install**, select the `.ipk`, and wait for installation.
@@ -51,7 +51,12 @@ No connection to your TV was made while building this package.
   ID, as in Aniyomi: a skip button (default) or automatic skipping. Without
   AniSkip times, the Skip intro button and red key jump a configurable length
   (85 seconds by default, as in Aniyomi).
-- External VTT, SRT and basic ASS subtitles, including a language selector.
+- External VTT, SRT and basic ASS subtitles, with a language selector and five
+  text sizes (Settings, or the Subtitles menu during an episode).
+- A fallback to the TV's built-in player (Audio menu or Settings → Video player)
+  for streams that play without sound or fail in AniShelf's player. The Audio
+  menu also shows the stream's audio format and how much sound was decoded;
+  Settings → Connection details includes the same readout for the last episode.
 - Optional automatic next episode, off by default.
 - AniShelf JSON backup merge/export and an offline Aniyomi backup converter.
 - Cloudflare browser check in the app window (Verify with AnimeOnsen).

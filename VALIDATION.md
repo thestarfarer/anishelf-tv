@@ -1,6 +1,26 @@
-# Validation — AniShelf TV 0.3.0
+# Validation — AniShelf TV 0.3.1
 
 Status: **experimental build, not a completed or hardware-verified Aniyomi port**.
+
+## Changes in 0.3.1
+
+First TV report (LG C2, webOS 25): browsing and video playback work; no sound.
+Fixed or addressed:
+
+- **No sound.** The cause is not known yet (the stream's audio format cannot be
+  fetched from the build machine). The Audio button is now always available; its
+  menu shows the audio format, whether the TV's Media Source supports it, and how
+  much sound has been decoded, and offers the TV's built-in player (webOS has basic
+  on-demand DASH support) as a fallback, remembered in Settings → Video player.
+  Track buttons refresh once the video has loaded, and the element is unmuted
+  defensively. Connection details include the readout of the last episode.
+- The search field lost focus (closing the TV keyboard) when the Magic Remote
+  pointer crossed a button; pointer focus now never leaves a text field.
+- Subtitle size: Small to Huge (75–175 %), in Settings and the Subtitles menu.
+- The TV's fallback font draws `…` as centred dots: every ellipsis (text, CSS
+  truncation, line clamps) and curly apostrophe is gone.
+- Settings dropdowns are a custom control: the arrow sits clear of the border,
+  and the list opens as a rounded panel anchored to its field, remote-navigable.
 
 ## Changes in 0.3.0
 
@@ -66,8 +86,9 @@ Two bugs found in a review of 0.2.0, both reproduced before fixing:
 
 ## Passed
 
-`npm test`: **28 tests passed** (the 5 new clearance tests also pass on Node
-16.20.2), adding to 0.1.0's coverage:
+`npm test`: **28 tests passed** (the 5 clearance tests also pass on Node 16.20.2;
+0.3.1 updates the interface test for the dropdown, subtitle size and the absence
+of ellipsis glyphs), adding to 0.1.0's coverage:
 
 - 0.3.0: the DevTools client (loopback-only connection despite the URL host the
   inspector reports, 70 KB fragmented replies, ping/pong, error replies, missing
@@ -87,8 +108,10 @@ Two bugs found in a review of 0.2.0, both reproduced before fixing:
   BaseURL, comments/CDATA/entities, `urn:`/`data:` values, `..` paths, malformed
   XML rejection, and a served CDN-switch manifest whose segments route correctly.
 
-`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **19 checks
-passed**, with the app's Content-Security-Policy enforced and no violations.
+`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **23 checks
+passed** (0.3.1 adds: pointer focus keeps the search field, anchored rounded
+dropdowns, subtitle size from the Subtitles menu, switching to the TV's built-in
+player and back from the Audio menu, and the playback readout in Connection details), with the app's Content-Security-Policy enforced and no violations.
 `tests/verify-ui.cjs` adds **6 checks**. It uses Chromium's real DevTools port
 and a local check page under `www.animeonsen.xyz` (host-mapped to 127.0.0.1)
 that sets an HttpOnly domain cookie when clicked. The real adapter only gets

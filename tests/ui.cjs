@@ -21,6 +21,10 @@ async function until(page, fn, arg, timeout = 15000) {
   throw new Error('Timed out waiting for: ' + fn.toString().slice(0, 140));
 }
 const info = page => page.evaluate(() => window.AniShelf.player.info());
+async function choose(page, label, option) {
+  await page.getByRole('button', { name: label, exact: true }).click();
+  await page.locator('#modal.dropdown #modal-body').getByRole('option', { name: option, exact: true }).click();
+}
 const now = page => page.evaluate(() => document.getElementById('video').currentTime);
 
 (async () => {
@@ -52,6 +56,12 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     assert.equal(await page.evaluate(() => document.activeElement.dataset.route), 'browse');
     checks.push('D-pad moves into content and Left returns to the active menu entry');
 
+    await page.getByRole('searchbox').focus();
+    await page.getByRole('button', { name: 'Search', exact: true }).hover();
+    await page.locator('[data-route="settings"]').hover();
+    assert.equal(await page.evaluate(() => document.activeElement.getAttribute('aria-label')), 'Search anime');
+    checks.push('Moving the pointer over buttons does not take focus from the search field');
+    assert.equal(await page.evaluate(() => document.body.innerText.includes('\u2026') || document.querySelector('input[type=search]').placeholder.includes('\u2026')), false);
     await page.getByRole('searchbox').fill('rain'); await page.getByRole('button', { name: 'Search', exact: true }).click();
     await until(page, () => document.querySelectorAll('.anime-card').length === 1);
     assert.match(await page.locator('.card-title').textContent(), /Signal/); checks.push('Search returns matching titles');
@@ -93,7 +103,10 @@ const now = page => page.evaluate(() => document.getElementById('video').current
 
     await page.locator('#audio-button').click();
     const audioOptions = await page.locator('#modal-body .modal-list button').allTextContents();
-    assert.deepEqual(audioOptions.slice().sort(), ['English', 'Japanese']);
+    assert.deepEqual(audioOptions.filter(x => ['English', 'Japanese'].includes(x)).sort(), ['English', 'Japanese']);
+    assert.ok(audioOptions.includes("Use the TV's built-in player"));
+    assert.match(await page.locator('#modal-body .modal-note').first().textContent(), /Audio format mp4a\.40\.2/);
+    await page.screenshot({ path: path.join(output, 'player-audio-1920.png') });
     await page.locator('#modal-body .modal-list button', { hasText: 'English' }).click();
     await until(page, () => window.AniShelf.player.info().audio === 'en');
     checks.push('Audio menu switches between Japanese and English tracks');
@@ -121,16 +134,42 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     checks.push('Reopening resumes the position with the saved quality and audio choice');
 
     await page.locator('[data-route="settings"]').click();
-    await page.getByLabel('Opening and ending', { exact: true }).selectOption('auto');
+    await page.getByRole('button', { name: 'Opening and ending', exact: true }).click();
+    const panel = await page.evaluate(() => {
+      const field = document.querySelector('[aria-label="Opening and ending"]').getBoundingClientRect();
+      const body = document.getElementById('modal-body'), box = body.getBoundingClientRect();
+      return { radius: getComputedStyle(body).borderTopLeftRadius, near: Math.abs(box.top - field.bottom) < 40 || Math.abs(box.bottom - field.top) < 40,
+        focused: document.activeElement.textContent };
+    });
+    assert.equal(panel.radius, '20px'); assert.equal(panel.near, true); assert.equal(panel.focused, 'Show a skip button');
+    await page.screenshot({ path: path.join(output, 'settings-dropdown-1920.png') });
+    await page.locator('#modal.dropdown #modal-body').getByRole('option', { name: 'Skip automatically', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Opening and ending', exact: true }).textContent(), 'Skip automatically');
+    checks.push('Settings dropdowns open as an anchored rounded list');
     await page.locator('[data-route="library"]').click();
     await page.locator('.anime-card').first().click();
     await page.locator('[data-episode="2"]').click();
     await until(page, () => document.getElementById('video').currentTime >= 8.7, undefined, 20000);
     assert.equal(await page.locator('#toast').textContent(), 'Skipped the opening');
     assert.equal((await info(page)).engine, 'shaka');
+    checks.push('Automatic skip jumps the opening of a progressive MP4 episode');
+
+    await page.getByRole('button', { name: 'Subtitles', exact: true }).click();
+    await page.locator('#modal-body').getByRole('button', { name: 'Large', exact: true }).click();
+    assert.equal(await page.evaluate(() => getComputedStyle(document.getElementById('subtitle-overlay')).fontSize), '42.5px');
+    checks.push('Subtitle size changes from the Subtitles menu');
+
+    await page.locator('#audio-button').click();
+    await page.locator('#modal-body').getByRole('button', { name: "Use the TV's built-in player", exact: true }).click();
+    await until(page, () => window.AniShelf.player.info().engine === 'native' && !document.getElementById('video').paused, undefined, 20000);
+    await page.locator('#audio-button').click();
+    assert.match(await page.locator('#modal-body .modal-note').first().textContent(), /built-in player/);
+    await page.locator('#modal-body').getByRole('button', { name: 'Use the AniShelf player', exact: true }).click();
+    await until(page, () => window.AniShelf.player.info().engine === 'shaka' && !document.getElementById('video').paused, undefined, 20000);
+    assert.equal(await page.evaluate(() => window.AniShelf.state.settings().engine), 'shaka');
+    checks.push("Audio menu switches to the TV's built-in player and back");
     await page.keyboard.press('Escape');
     await page.locator('[data-episode="2"]').waitFor();
-    checks.push('Automatic skip jumps the opening of a progressive MP4 episode');
 
     await page.locator('[data-route="library"]').click();
     await page.getByRole('button', { name: 'Planned', exact: true }).click();
@@ -173,11 +212,12 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     checks.push('DASH with a CDN-changing BaseURL and single-quoted templates plays');
 
     await page.locator('[data-route="settings"]').click();
-    assert.equal(await page.getByLabel('Video quality', { exact: true }).inputValue(), '180');
-    await page.getByLabel('Title language', { exact: true }).selectOption('english');
+    assert.equal(await page.getByRole('button', { name: 'Video quality', exact: true }).getAttribute('data-value'), '180');
+    await choose(page, 'Title language', 'English');
     await page.screenshot({ path: path.join(output, 'settings-1920.png'), fullPage: true });
     await page.getByRole('button', { name: 'Connection details', exact: true }).click();
-    assert.match(await page.locator('.code-box').textContent(), /loopbackOnly/);
+    const diagnostics = JSON.parse(await page.locator('.code-box').textContent());
+    assert.equal(diagnostics.loopbackOnly, true); assert.ok(diagnostics.playback && 'audioDecodedBytes' in diagnostics.playback);
     await page.keyboard.press('Escape'); assert.equal(await page.locator('#modal').isVisible(), false);
     checks.push('Settings and diagnostic dialog are remote accessible');
 

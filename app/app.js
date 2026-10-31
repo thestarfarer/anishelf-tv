@@ -20,22 +20,22 @@
     if (subtitle) copy.append(el('p', 'page-subtitle', subtitle)); head.append(copy);
     if (badge) head.append(el('span', 'badge', badge)); content.append(head);
   }
-  function loading(where = content) { const row = el('div', 'loading-row'); row.append(el('div', 'spinner'), el('span', '', 'Loading from AnimeOnsen…')); where.append(row); return row; }
+  function loading(where = content) { const row = el('div', 'loading-row'); row.append(el('div', 'spinner'), el('span', '', 'Loading from AnimeOnsen...')); where.append(row); return row; }
   function errorState(error, retry, where = content) {
     const box = el('section', 'empty'), actions = el('div', 'actions');
     if (error.code === 'SOURCE_CHALLENGE') {
       box.append(el('h2', 'error-title', 'AnimeOnsen wants a quick check'), el('p', '', error.message));
-      box.append(el('p', 'error-note', 'AniShelf opens AnimeOnsen’s check page on the TV. Complete it with the pointer if it asks, and AniShelf comes back on its own.'));
+      box.append(el('p', 'error-note', 'AniShelf opens AnimeOnsen\'s check page on the TV. Complete it with the pointer if it asks, and AniShelf comes back on its own.'));
       actions.append(button('Verify with AnimeOnsen', verifySource, 'primary'), button('Try again', retry, 'subtle'));
     } else {
-      box.append(el('h2', 'error-title', 'Couldn’t reach this source'), el('p', '', error.message));
+      box.append(el('h2', 'error-title', 'Couldn\'t reach this source'), el('p', '', error.message));
       box.append(el('p', 'error-note', 'Your library and saved progress are still on this TV.'));
       actions.append(button('Try again', retry, 'primary'));
     }
     box.append(actions); where.append(box); return box;
   }
   async function verifySource() {
-    A.toast('Opening AnimeOnsen’s check…');
+    A.toast('Opening AnimeOnsen\'s check...');
     try { await A.api.verify(); }
     catch (e) {
       A.openModal('Verification could not start', body => {
@@ -71,7 +71,7 @@
     const rev = begin('browse');
     header('DISCOVER · ANIMEONSEN', 'Find your next watch.', 'Your familiar source, made for the big screen.', 'TV-only · Personal port');
     const form = el('form', 'search-form'), input = document.createElement('input');
-    input.type = 'search'; input.placeholder = 'Search anime…'; input.value = query; input.maxLength = 200; input.setAttribute('aria-label', 'Search anime');
+    input.type = 'search'; input.placeholder = 'Search anime...'; input.value = query; input.maxLength = 200; input.setAttribute('aria-label', 'Search anime');
     const submit = el('button', 'primary', 'Search'); submit.type = 'submit'; form.append(input, submit);
     if (query) form.append(button('Clear', () => { query = ''; return browse(); }, 'subtle'));
     form.onsubmit = event => { event.preventDefault(); query = input.value.trim(); browse(); }; content.append(form);
@@ -91,7 +91,7 @@
   function pagination(target, rev) {
     if (!nextPage || query) return;
     const more = button('Load more', async () => {
-      more.disabled = true; more.textContent = 'Loading…';
+      more.disabled = true; more.textContent = 'Loading...';
       try {
         const result = await A.api.call('catalog', { start: pageStart + 30 }, request.signal);
         if (rev !== revision) return;
@@ -135,7 +135,7 @@
     content.append(button('Back', A.back, 'back-button'));
     const hero = el('section', 'detail-hero'), cover = el('div', 'detail-cover'); cover.append(poster(item));
     const copy = el('div', 'detail-copy'); copy.append(el('div', 'eyebrow', 'ANIMEONSEN'), el('h1', '', titleOf(item)));
-    const meta = el('div', 'detail-meta'), desc = el('p', 'synopsis', item.description || 'Loading title information…');
+    const meta = el('div', 'detail-meta'), desc = el('p', 'synopsis', item.description || 'Loading title information...');
     const actions = el('div', 'actions'); copy.append(meta, desc, actions); hero.append(cover, copy); content.append(hero);
     const episodesArea = el('section'); content.append(episodesArea); const busy = loading(episodesArea);
     renderActions(actions, item, []);
@@ -210,15 +210,22 @@
     begin('settings'); header('MAKE IT YOURS', 'A comfortable watch.', 'Language, playback, and your saved library.');
     const preferences = el('section', 'settings-block'); preferences.append(el('h2', '', 'Watching'));
     function select(label, note, key, choices, parse = value => value) {
-      const row = el('label', 'setting-row'), text = el('div'); text.append(el('span', 'setting-label', label), el('p', '', note));
-      const field = document.createElement('select'); field.setAttribute('aria-label', label);
+      const row = el('div', 'setting-row'), text = el('div'); text.append(el('span', 'setting-label', label), el('p', '', note));
       const current = String(A.state.settings()[key]);
       if (!choices.some(([value]) => value === current)) choices = [...choices, [current, current + 'p']];
-      for (const [value, name] of choices) { const option = el('option', '', name); option.value = value; option.selected = current === value; field.append(option); }
-      field.onchange = () => { try { A.state.setting(key, parse(field.value)); A.toast('Preference saved'); } catch (e) { A.toast(e.message); } }; row.append(text, field); preferences.append(row);
+      const nameOf = value => (choices.find(([v]) => v === value) || [value, value])[1];
+      const field = el('button', 'select-field'); field.type = 'button';
+      field.setAttribute('aria-label', label); field.setAttribute('aria-haspopup', 'listbox'); field.dataset.value = current;
+      const shown = el('span', 'select-value', nameOf(current)); field.append(shown);
+      field.onclick = () => A.openDropdown(field, choices.map(([value, name]) => ({ value, label: name, selected: value === field.dataset.value })), value => {
+        try { A.state.setting(key, parse(value)); field.dataset.value = value; shown.textContent = nameOf(value); A.toast('Preference saved'); } catch (e) { A.toast(e.message); }
+      });
+      row.append(text, field); preferences.append(row);
     }
     select('Title language', 'Use English titles when the source provides them.', 'title', [['romaji', 'Romaji'], ['english', 'English']]);
     select('Subtitle language', 'You can change this during an episode.', 'subtitle', [['off', 'Off'], ['en-US', 'English'], ['ru-RU', 'Русский'], ['ar-ME', 'العربية'], ['de-DE', 'Deutsch'], ['es-ES', 'Español'], ['es-LA', 'Español (Latin America)'], ['fr-FR', 'Français'], ['it-IT', 'Italiano'], ['pt-BR', 'Português (Brasil)']]);
+    select('Subtitle size', 'You can also change it from the Subtitles menu during an episode.', 'subtitleSize', [['75', 'Small'], ['100', 'Medium'], ['125', 'Large'], ['150', 'Extra large'], ['175', 'Huge']], Number);
+    select('Video player', 'The TV\'s built-in player is a fallback for streams without sound or that fail. It cannot switch quality.', 'engine', [['shaka', 'AniShelf player'], ['native', 'TV built-in player']]);
     select('Video quality', 'Automatic adapts to your connection. A fixed choice uses that height or the next lower one.', 'quality', [['auto', 'Automatic'], ['1080', '1080p'], ['720', '720p'], ['480', '480p'], ['360', '360p']]);
     select('Audio language', 'Used when an episode offers more than one audio track.', 'audio', [['ja', '日本語 (Japanese)'], ['en', 'English'], ['', 'Source default']]);
     select('Opening and ending', 'Times come from the AniSkip community database (api.aniskip.com), matched by MyAnimeList ID.', 'skip', [['button', 'Show a skip button'], ['auto', 'Skip automatically'], ['off', 'Off (no AniSkip lookups)']]);
@@ -241,12 +248,13 @@
       const a = document.createElement('a'); a.href = url; a.download = 'anishelf-library.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
       A.toast('Backup requested. Some TV browsers do not support file downloads.');
     }, 'subtle')); backup.append(actions, file); content.append(backup);
-    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.3.0'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
+    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.3.1'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
     about.append(el('p', 'technical-note', 'AnimeOnsen browsing, episodes, library, history, subtitles, DASH/HLS playback with quality and audio selection, and AniSkip opening/ending skips. Android extension APKs, manga, downloads and tracker sync are not implemented. AnimeOnsen may require browser verification on some networks.'));
     about.append(button('Verify AnimeOnsen access', verifySource, 'subtle load-more'));
     about.append(button('Connection details', async () => {
       let text;
-      try { text = JSON.stringify(await A.api.call('status'), null, 2); } catch (e) { text = e.message; }
+      // The last episode's playback readout (codecs, decoded sound) helps diagnose silent streams.
+      try { text = JSON.stringify({ ...(await A.api.call('status')), playback: A.player.details() }, null, 2); } catch (e) { text = e.message; }
       A.openModal('Connection details', body => { body.append(el('pre', 'code-box', text), button('Close', A.closeModal, 'primary load-more')); });
     }, 'subtle load-more')); content.append(about); firstContent();
   }

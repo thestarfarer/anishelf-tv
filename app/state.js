@@ -6,6 +6,7 @@
   const defaults = () => ({ version: 1, library: {}, progress: {}, settings: {
     title: 'romaji', subtitle: 'en-US', autoNext: false,
     quality: 'auto', audio: 'ja', skip: 'button', introLength: 85,
+    subtitleSize: 100, engine: 'shaka',
   }, importedSeed: false });
   function safeId(value) {
     return typeof value === 'string' && /^[a-zA-Z0-9_.-]{1,160}$/.test(value) &&
@@ -50,6 +51,9 @@
       if (SKIP_MODES.includes(value.settings.skip)) result.settings.skip = value.settings.skip;
       const intro = Number(value.settings.introLength);
       if (Number.isInteger(intro) && intro >= 10 && intro <= 300) result.settings.introLength = intro;
+      const size = Number(value.settings.subtitleSize);
+      if (Number.isInteger(size) && size >= 50 && size <= 250) result.settings.subtitleSize = size;
+      if (['shaka', 'native'].includes(value.settings.engine)) result.settings.engine = value.settings.engine;
     }
     result.importedSeed = value.importedSeed === true;
     return result;

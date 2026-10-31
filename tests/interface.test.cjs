@@ -51,9 +51,15 @@ test('interface integrates catalog, search, details, library, watched state, per
   assert.equal(A.state.list().length, 1);
 
   d.querySelector('[data-route="settings"]').click();
-  const select = d.querySelector('select[aria-label="Subtitle language"]'); select.value = 'ru-RU';
-  select.dispatchEvent(new page.dom.window.Event('change'));
+  const field = d.querySelector('button.select-field[aria-label="Subtitle language"]'); field.click();
+  assert.equal(d.getElementById('modal').hidden, false);
+  button(d, 'Русский', d.querySelector('#modal-body')).click();
   assert.equal(A.state.settings().subtitle, 'ru-RU');
+  assert.equal(field.textContent, 'Русский'); assert.equal(d.getElementById('modal').hidden, true);
+  d.querySelector('button.select-field[aria-label="Subtitle size"]').click();
+  button(d, 'Large', d.querySelector('#modal-body')).click();
+  assert.equal(A.state.settings().subtitleSize, 125);
+  assert.equal(d.body.textContent.includes('\u2026'), false, 'no ellipsis glyphs (the TV font centres them)');
   const saved = A.state.export(); page.dom.window.close();
   page = await load(server, saved); d = page.document;
   assert.match(d.querySelector('h1').textContent, /home/);
