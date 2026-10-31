@@ -140,6 +140,38 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     await page.locator('[data-route="history"]').click();
     assert.ok(await page.locator('.history-row').count() >= 2); checks.push('Recent playback and watched episodes appear in history');
 
+    // Regression: switching episodes while the previous video is still unloading must not
+    // record the old position (here 29/30 s = watched) against the next, untouched episode.
+    await page.locator('[data-route="browse"]').click();
+    await page.locator('.anime-card[data-id="test-2"]').click();
+    await page.locator('[data-episode="1"]').click();
+    await until(page, () => { const v = document.getElementById('video'); return v.currentTime > .3 && !v.paused; });
+    await page.evaluate(() => {
+      const unload = window.shaka.Player.prototype.unload;
+      window.shaka.Player.prototype.unload = function (...args) { return new Promise(r => setTimeout(r, 600)).then(() => unload.apply(this, args)); };
+    });
+    await page.evaluate(() => new Promise(resolve => {
+      const v = document.getElementById('video');
+      v.addEventListener('seeked', () => { document.getElementById('next-episode').click(); resolve(); }, { once: true });
+      v.currentTime = 29;
+    }));
+    await until(page, () => document.getElementById('player-episode').textContent.startsWith('Episode 2') &&
+      document.getElementById('video').currentTime > 0 && !document.getElementById('video').paused, undefined, 20000);
+    const switched = await page.evaluate(() => ({ first: window.AniShelf.state.progress('test-2', '1'), next: window.AniShelf.state.progress('test-2', '2') }));
+    assert.equal(switched.first?.seen, true, 'the finished episode is marked watched');
+    assert.ok(!switched.next || (switched.next.seen === false && switched.next.position < 25), 'next episode kept clean: ' + JSON.stringify(switched.next));
+    await page.keyboard.press('Escape');
+    checks.push('Switching episodes during a slow unload keeps the next episode\'s progress clean');
+
+    // Episode 3: the manifest moves to another CDN with <BaseURL> and uses single-quoted,
+    // host-relative segment templates.
+    await page.locator('[data-episode="3"]').click();
+    await until(page, () => { const v = document.getElementById('video'); return v.currentTime > .3 && !v.paused; });
+    assert.deepEqual((await info(page)).qualities, [360, 180]);
+    await page.keyboard.press('Escape');
+    await page.locator('[data-episode="3"]').waitFor();
+    checks.push('DASH with a CDN-changing BaseURL and single-quoted templates plays');
+
     await page.locator('[data-route="settings"]').click();
     assert.equal(await page.getByLabel('Video quality', { exact: true }).inputValue(), '180');
     await page.getByLabel('Title language', { exact: true }).selectOption('english');

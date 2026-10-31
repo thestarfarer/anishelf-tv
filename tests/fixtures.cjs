@@ -11,6 +11,13 @@ const items = names.map((title, i) => ({ id: 'test-' + (i + 1), source: 'animeon
   description: 'A fictional title for testing the TV interface. This catalog is not included in the installed app.',
   score: 8.1, status: 'finished_airing', genres: ['Adventure', 'Slice of Life'], malId: 1000 + i }));
 const DASH = 'https://cdn.animeonsen.xyz/video/mp4-dash/test-1/1/manifest.mpd';
+// Same media, but the manifest moves to another CDN with <BaseURL> and uses single-quoted,
+// host-relative segment templates (valid DASH that a regex rewrite mishandles).
+const DASH_CDN_SWITCH = 'https://cdn.animeonsen.xyz/video/mp4-dash/test-1/3/manifest.mpd';
+function cdnSwitchManifest(text) {
+  return text.replace(/(<MPD\b[^>]*>)/, '$1\n\t<BaseURL>https://cdn2.animeonsen.xyz/other/</BaseURL>')
+    .replace(/initialization="([^"]+)" media="([^"]+)"/g, "initialization='/video/mp4-dash/test-1/1/$1' media='/video/mp4-dash/test-1/1/$2'");
+}
 const episodes = [1, 2, 3].map(i => ({ id: String(i), animeId: 'test-1', number: i, title: ['The first light', 'An unexpected letter', 'The road home'][i - 1] }));
 function fixtureSource() {
   return {
@@ -19,7 +26,7 @@ function fixtureSource() {
     details: async id => items.find(i => i.id === id) || items[0],
     episodes: async id => episodes.map(ep => ({ ...ep, animeId: id })),
     // Episode 1 is DASH like AnimeOnsen's real streams; other episodes keep a progressive MP4 path.
-    stream: async (id, episode) => ({ url: episode === '1' ? DASH : 'https://media.animeonsen.xyz/test.mp4',
+    stream: async (id, episode) => ({ url: episode === '1' ? DASH : episode === '3' ? DASH_CDN_SWITCH : 'https://media.animeonsen.xyz/test.mp4',
       subtitles: [{ lang: 'en-US', label: 'English', url: 'https://media.animeonsen.xyz/test.srt' }] }),
   };
 }
@@ -33,7 +40,10 @@ async function fixtureOpen(url, options = {}) {
     bytes = Buffer.from(svg); type = 'image/svg+xml';
   } else if (url.includes('/video/mp4-dash/')) {
     const name = path.basename(new URL(url).pathname);
-    try { bytes = await fs.promises.readFile(path.join(__dirname, 'fixtures/dash', name)); }
+    try {
+      bytes = await fs.promises.readFile(path.join(__dirname, 'fixtures/dash', name));
+      if (url === DASH_CDN_SWITCH) bytes = Buffer.from(cdnSwitchManifest(bytes.toString()));
+    }
     catch (_) { const missing = Readable.from([]); missing.statusCode = 404; missing.headers = {}; missing.finalUrl = url; return missing; }
     type = name.endsWith('.mpd') ? 'application/dash+xml' : 'video/iso.segment';
   } else if (url.endsWith('.srt')) {
@@ -56,4 +66,4 @@ async function fixtureOpen(url, options = {}) {
 }
 // Opening at 3–9 s so the 30 s fixture video reaches it quickly.
 async function fixtureSkipTimes() { return [{ type: 'op', start: 3, end: 9 }]; }
-module.exports = { fixtureSource, fixtureOpen, fixtureSkipTimes, items, episodes, DASH };
+module.exports = { fixtureSource, fixtureOpen, fixtureSkipTimes, items, episodes, DASH, DASH_CDN_SWITCH };

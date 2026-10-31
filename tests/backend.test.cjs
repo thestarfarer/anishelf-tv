@@ -72,7 +72,8 @@ test('DASH manifests have absolute and host-relative URLs rerouted, and Location
 <SegmentTemplate initialization="/v/init.mp4?t=1&amp;u=2" media="https://cdn.example/v/$Number%05d$.m4s" index="rel/$Number$.sidx"/>
 <BaseURL>relative/</BaseURL></Representation></AdaptationSet></Period></MPD>`, 'https://cdn.example/path/manifest.mpd',
   url => { routed.push(url); return 'http://127.0.0.1:1/t/p/x' + new URL(url).pathname + new URL(url).search; });
-  assert.deepEqual(routed, ['https://media.example/base/', 'https://cdn.example/v/init.mp4?t=1&u=2', 'https://cdn.example/v/$Number%05d$.m4s']);
+  // Host-relative paths resolve against the MPD-level BaseURL's host, not the manifest's.
+  assert.deepEqual(routed, ['https://media.example/base/', 'https://media.example/v/init.mp4?t=1&u=2', 'https://cdn.example/v/$Number%05d$.m4s']);
   assert.doesNotMatch(out, /<Location>/);
   assert.match(out, /initialization="http:\/\/127\.0\.0\.1:1\/t\/p\/x\/v\/init\.mp4\?t=1&amp;u=2"/);
   assert.match(out, /index="rel\/\$Number\$\.sidx"/); assert.match(out, /<BaseURL>relative\/<\/BaseURL>/);
@@ -132,4 +133,63 @@ test('AniSkip responses are parsed, filtered, cached, and a 404 means no times',
   const none = createSkipTimes(async () => { const e = new Error('404'); e.status = 404; throw e; });
   assert.deepEqual(await none(5, 2, 0), []);
   await assert.rejects(skip('1; rm', 1, 0)); await assert.rejects(skip(1, -1, 0));
+});
+
+test('DASH rewriting handles single-quoted attributes and host-relative paths under a CDN-changing BaseURL', () => {
+  const routed = [];
+  const route = url => { routed.push(url); const u = new URL(url); return 'http://127.0.0.1:1/t/p/' + u.hostname + u.pathname + u.search; };
+  const out = rewriteDash(`<MPD xmlns='urn:mpeg:dash:schema:mpd:2011'><BaseURL>https://cdn2.example/content/</BaseURL>
+<Period><AdaptationSet bitstreamSwitching='true'><Representation id='v'>
+<SegmentTemplate media='/seg/$Number$.m4s' initialization='https://cdn3.example/init.mp4'/></Representation></AdaptationSet></Period></MPD>`,
+  'https://cdn.example/path/manifest.mpd', route);
+  assert.deepEqual(routed, ['https://cdn2.example/content/', 'https://cdn2.example/seg/$Number$.m4s', 'https://cdn3.example/init.mp4']);
+  assert.match(out, /media='http:\/\/127\.0\.0\.1:1\/t\/p\/cdn2\.example\/seg\/\$Number\$\.m4s'/);
+  assert.match(out, /initialization='http:\/\/127\.0\.0\.1:1\/t\/p\/cdn3\.example\/init\.mp4'/);
+  assert.match(out, /bitstreamSwitching='true'/);
+});
+
+test('DASH rewriting follows XML rules: comments, CDATA, entities, other schemes, and nested bases', () => {
+  const routed = [];
+  const route = url => { routed.push(url); const u = new URL(url); return 'http://127.0.0.1:1/t/p/' + u.hostname + u.pathname + u.search; };
+  const manifest = `<?xml version="1.0"?>
+<!-- <SegmentTemplate media="https://commented.example/x.m4s"/> -->
+<mpd:MPD xmlns:mpd="urn:mpeg:dash:schema:mpd:2011" xmlns:xl="http://www.w3.org/1999/xlink">
+  <mpd:PatchLocation>https://cdn.example/patch</mpd:PatchLocation>
+  <mpd:BaseURL><![CDATA[https://edge.example/a/b/]]></mpd:BaseURL>
+  <mpd:Period xl:href="urn:mpeg:dash:resolve-to-zero:2013"/>
+  <mpd:Period>
+    <mpd:AdaptationSet>
+      <mpd:BaseURL>video/</mpd:BaseURL>
+      <mpd:Representation id="1">
+        <mpd:SegmentBase><mpd:Initialization sourceURL="data:video/mp4;base64,AAAA"/></mpd:SegmentBase>
+        <mpd:SegmentTemplate media="/abs/$Number$.m4s?a=1&amp;b=&quot;2&quot;" initialization="../../../../up/init.mp4" index="seg.sidx"/>
+      </mpd:Representation>
+    </mpd:AdaptationSet>
+  </mpd:Period>
+</mpd:MPD>`;
+  const out = rewriteDash(manifest, 'https://cdn.example/m/manifest.mpd', route);
+  assert.deepEqual(routed, ['https://edge.example/a/b/', 'https://edge.example/abs/$Number$.m4s?a=1&b=%222%22', 'https://edge.example/up/init.mp4']);
+  assert.match(out, /<!-- <SegmentTemplate media="https:\/\/commented\.example\/x\.m4s"\/> -->/);
+  assert.doesNotMatch(out, /PatchLocation/);
+  assert.match(out, /<mpd:BaseURL>http:\/\/127\.0\.0\.1:1\/t\/p\/edge\.example\/a\/b\/<\/mpd:BaseURL>/);
+  assert.match(out, /<mpd:BaseURL>video\/<\/mpd:BaseURL>/);
+  assert.match(out, /xl:href="urn:mpeg:dash:resolve-to-zero:2013"/);
+  assert.match(out, /sourceURL="data:video\/mp4;base64,AAAA"/);
+  assert.match(out, /media="http:\/\/127\.0\.0\.1:1\/t\/p\/edge\.example\/abs\/\$Number\$\.m4s\?a=1&amp;b=%222%22"/);
+  assert.match(out, /index="seg\.sidx"/);
+  for (const broken of ['<MPD><Period></MPD>', '<MPD><Period media=x/></MPD>', '<MPD></MPD><MPD></MPD>', '<html></html>', '<MPD><BaseURL>a<b/></BaseURL></MPD>']) {
+    assert.throws(() => rewriteDash(broken, 'https://cdn.example/a.mpd', route), /Invalid DASH manifest/, broken);
+  }
+});
+
+test('a manifest using a CDN-changing BaseURL and single-quoted host-relative templates plays its segments through the route', async t => {
+  const seen = [];
+  const open = async (url, options) => { seen.push(new URL(url).hostname); return fixtureOpen(url, options); };
+  const app = await startBackend({ source: fixtureSource(), open }); t.after(() => app.close());
+  const stream = JSON.parse((await request(app.base + '/api/stream?id=test-1&episode=3')).body);
+  const manifest = (await request(stream.url)).body.toString();
+  const media = manifest.match(/media='([^']+)'/)[1].replace('$RepresentationID$', '0').replace('$Number%05d$', '00002');
+  assert.match(media, /^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}\/p\/[a-f0-9]{24}\//);
+  assert.equal((await request(media)).status, 200);
+  assert.equal(seen[seen.length - 1], 'cdn2.animeonsen.xyz');
 });

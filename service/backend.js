@@ -6,7 +6,8 @@ const network = require('./network');
 const { Onsen, HEADERS, HOSTS, API, id } = require('./onsen');
 const { toVtt } = require('./subtitles');
 const { createSkipTimes } = require('./aniskip');
-const VERSION = '0.2.0';
+const { rewriteDash } = require('./dash');
+const VERSION = '0.2.1';
 
 function rewriteHls(text, base, register) {
   if (!text.trimStart().startsWith('#EXTM3U')) throw new Error('Invalid HLS playlist.');
@@ -16,23 +17,6 @@ function rewriteHls(text, base, register) {
       (_, uri) => `URI="${register(new URL(uri, base).href)}"`);
     return register(new URL(line.trim(), base).href);
   }).join('\n');
-}
-// Relative DASH URLs already resolve through the loopback route, because that route mirrors
-// the upstream path. Absolute and host-relative URLs are redirected into the same route.
-function rewriteDash(text, manifestUrl, route) {
-  if (!/<MPD[\s>]/.test(text)) throw new Error('Invalid DASH manifest.');
-  const base = new URL(manifestUrl);
-  const map = value => {
-    const trimmed = value.trim();
-    if (!/^(?:https?:)?\/\//i.test(trimmed) && !trimmed.startsWith('/')) return value;
-    const absolute = new URL(trimmed.replace(/&amp;/g, '&'), base).href;
-    return route(absolute).replace(/&/g, '&amp;');
-  };
-  return text
-    .replace(/<Location\b[^>]*>[\s\S]*?<\/Location>/g, '')
-    .replace(/(<BaseURL\b[^>]*>)([^<]*)(<\/BaseURL>)/g, (_, open, value, close) => open + map(value) + close)
-    .replace(/\b(media|initialization|index|bitstreamSwitching|sourceURL|xlink:href)="([^"]*)"/g,
-      (_, attribute, value) => `${attribute}="${map(value)}"`);
 }
 function streamFormat(url) {
   return /\.mpd(?:\?|$)/i.test(url) ? 'dash' : /\.m3u8(?:\?|$)/i.test(url) ? 'hls' : 'video';

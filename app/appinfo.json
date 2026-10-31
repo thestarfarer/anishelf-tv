@@ -1,6 +1,6 @@
 {
   "id": "com.homebrew.anishelf",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "vendor": "Personal webOS port",
   "type": "web",
   "main": "index.html",

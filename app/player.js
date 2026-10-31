@@ -11,13 +11,16 @@
   const SEGMENT_NAMES = { op: 'opening', 'mixed-op': 'opening', ed: 'ending', 'mixed-ed': 'ending', recap: 'recap' };
   let context = null, generation = 0, pending, hideTimer, lastSave = 0, cues = [], subtitleGeneration = 0;
   let engine = null, engineReady = null, usingEngine = false, skips = [], skipped = new Set(), activeSkip = null;
+  // Off while one episode is unloading and the next is loading: the element still reports the
+  // previous video's time (and fires its pause/timeupdate/ended events) after context switches.
+  let recording = false;
   function time(value) {
     value = Math.max(0, Number(value) || 0);
     const hours = Math.floor(value / 3600), mins = Math.floor(value / 60) % 60, secs = Math.floor(value % 60);
     return (hours ? hours + ':' + String(mins).padStart(2, '0') : mins) + ':' + String(secs).padStart(2, '0');
   }
   function save() {
-    if (!context || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    if (!context || !recording || !Number.isFinite(video.duration) || video.duration <= 0) return;
     try { A.state.record(context.anime, context.episode, video.currentTime, video.duration,
       video.currentTime / video.duration >= .95 ? true : undefined); }
     catch (e) { A.toast(e.message); }
@@ -276,6 +279,7 @@
 
   async function open(anime, episode, episodes, onClose) {
     if (context) save();
+    recording = false;
     pending?.abort(); pending = new AbortController();
     const requestId = ++generation, signal = pending.signal;
     cues = []; ++subtitleGeneration; subtitleLayer.textContent = ''; resetSkips();
@@ -306,6 +310,7 @@
         const start = context.resume > 0 ? context.resume : null; context.resume = 0;
         await player.load(stream.url, start, MIME[stream.format] || MIME.video);
         if (requestId !== generation) return;
+        recording = true;
         applyQualityPreference(); updateTrackButtons();
       } else if (stream.format === 'dash') {
         throw new Error('This TV web engine lacks Media Source support, which DASH playback needs.');
@@ -324,7 +329,7 @@
   }
   function close() {
     if (!context) return;
-    save(); const onClose = context.onClose; context = null; ++generation; ++subtitleGeneration;
+    save(); recording = false; const onClose = context.onClose; context = null; ++generation; ++subtitleGeneration;
     pending?.abort(); pending = null; clearTimeout(hideTimer);
     stopMedia(); cues = []; subtitleLayer.textContent = ''; resetSkips(); usingEngine = false;
     view.hidden = true; document.getElementById('shell').hidden = false;
@@ -339,6 +344,8 @@
     if (!context) return;
     if (!usingEngine && context.resume > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(context.resume, Math.max(0, video.duration - 2));
     context.resume = 0;
+    // The native player removed the previous source synchronously, so this metadata is the new episode's.
+    if (!usingEngine) recording = true;
     document.getElementById('play-duration').textContent = time(video.duration);
   });
   video.addEventListener('durationchange', () => { if (context) document.getElementById('play-duration').textContent = time(video.duration); });
@@ -354,14 +361,18 @@
     fail(descriptions[video.error?.code] || 'Playback stopped unexpectedly. Try the episode again.');
   });
   video.addEventListener('timeupdate', () => {
-    if (!context) return;
+    if (!context || !recording) return;
     document.getElementById('play-time').textContent = time(video.currentTime);
     if (document.activeElement !== seek && Number.isFinite(video.duration)) seek.value = String(video.currentTime / video.duration * 1000);
     subtitleLayer.textContent = cues.filter(c => c.start <= video.currentTime && c.end > video.currentTime).map(c => c.text).join('\n');
     updateSkip();
     if (Date.now() - lastSave > 5000) { save(); lastSave = Date.now(); }
   });
-  video.addEventListener('ended', () => { save(); if (A.state.settings().autoNext) next(); else showControls(true); });
+  video.addEventListener('ended', () => {
+    // An ending from the outgoing episode must not advance (or mark) the incoming one.
+    if (!context || !recording) return;
+    save(); if (A.state.settings().autoNext) next(); else showControls(true);
+  });
   video.onclick = toggle;
   view.addEventListener('pointermove', () => showControls());
   seek.oninput = () => { if (Number.isFinite(video.duration)) video.currentTime = Number(seek.value) / 1000 * video.duration; showControls(); };

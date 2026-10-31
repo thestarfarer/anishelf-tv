@@ -1,6 +1,28 @@
-# Validation — AniShelf TV 0.2.0
+# Validation — AniShelf TV 0.2.1
 
 Status: **experimental build, not a completed or hardware-verified Aniyomi port**.
+
+## Changes in 0.2.1
+
+Two bugs found in a review of 0.2.0, both reproduced before fixing:
+
+- **Episode switching could corrupt watched progress.** `open()` switched to the
+  new episode before the previous video finished unloading; that video's `pause`
+  event then saved its position against the new episode. Switching at 29/30 s
+  marked the untouched next episode as watched (reproduced with a delayed Shaka
+  unload). Progress recording is now suspended from the start of a switch until
+  the new stream has loaded, and an `ended` event from the outgoing video no
+  longer marks or advances the incoming one.
+- **Valid DASH manifests could fail.** The regex rewrite ignored single-quoted
+  attributes and resolved host-relative paths against the manifest's host even
+  when a `<BaseURL>` moved them to another CDN. `service/dash.js` now scans the
+  XML (both quote styles, comments, CDATA, entities, namespace prefixes), follows
+  the DASH BaseURL chain per element, rewrites only URL-bearing attributes on the
+  elements that define them (so AdaptationSet's boolean `bitstreamSwitching` is
+  left alone), leaves `urn:`/`data:` values alone, resolves `..` paths upstream,
+  and removes `Location`/`PatchLocation`. The rest of the manifest is preserved
+  byte for byte. One 0.2.0 test had encoded the wrong host resolution and was
+  corrected.
 
 ## Changes since 0.1.0
 
@@ -25,7 +47,7 @@ Status: **experimental build, not a completed or hardware-verified Aniyomi port*
 
 ## Passed
 
-`npm test`: **20 tests passed**, adding to 0.1.0's coverage:
+`npm test`: **23 tests passed**, adding to 0.1.0's coverage:
 
 - DASH origin route: manifest, init and media segments served; unknown routes 404;
   private addresses rejected.
@@ -35,9 +57,16 @@ Status: **experimental build, not a completed or hardware-verified Aniyomi port*
   AniSkip lookup never becomes the source error.
 - Cancelled media requests do not set the reported source error.
 - Converter: second-based `lastModifiedAt` becomes milliseconds.
+- 0.2.1: single-quoted attributes, host-relative paths under a CDN-changing
+  BaseURL, comments/CDATA/entities, `urn:`/`data:` values, `..` paths, malformed
+  XML rejection, and a served CDN-switch manifest whose segments route correctly.
 
-`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **17 checks
+`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **19 checks
 passed**, with the app's Content-Security-Policy enforced and no violations:
+
+- 0.2.1: switching to the next episode at 29/30 s during a deliberately slowed
+  unload leaves the next episode unwatched; a DASH episode whose manifest
+  switches CDN via BaseURL with single-quoted, host-relative templates plays.
 
 - Synthetic DASH episode (360p/180p H.264, Japanese/English AAC) plays through
   Shaka with converted SRT subtitles, preferring Japanese audio.
