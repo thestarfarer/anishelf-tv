@@ -67,6 +67,12 @@
     if (action) box.append(button(label, action, 'primary')); content.append(box);
   }
   function firstContent() { A.nav.first(content); }
+  // Browse lands on the first title, so the search box stays unhighlighted until the user goes to
+  // it. Never steal focus from someone typing a search.
+  function focusCatalog(target) {
+    if (document.activeElement && document.activeElement.closest('.search-form')) return;
+    A.nav.focus(target.querySelector('.anime-card, .empty button') || content.querySelector('.search-field'));
+  }
   async function browse(reset = true) {
     const rev = begin('browse');
     header('DISCOVER · ANIMEONSEN', 'Find your next watch.', 'Your familiar source, made for the big screen.', 'TV-only · Personal port');
@@ -88,8 +94,8 @@
     content.append(form);
     const section = el('div', 'section-line'); section.append(el('h2', '', query ? 'Search results' : 'Explore the catalog')); content.append(section);
     const target = el('section'); content.append(target);
-    if (!reset && catalog.length) { grid(catalog, target); pagination(target, rev); firstContent(); return; }
-    const busy = loading(target); firstContent();
+    if (!reset && catalog.length) { grid(catalog, target); pagination(target, rev); focusCatalog(target); return; }
+    const busy = loading(target);
     const toResults = focusResults; focusResults = false;
     try {
       const result = await A.api.call(query ? 'search' : 'catalog', query ? { q: query } : { start: 0 }, request.signal);
@@ -98,8 +104,13 @@
       if (!catalog.length) { const box = el('div', 'empty'); box.append(el('h2', '', 'No matches yet'), el('p', '', 'Try another spelling or the Japanese title.')); target.append(box); }
       else grid(catalog, target);
       pagination(target, rev);
-      if (toResults) A.nav.focus(target.querySelector('.anime-card'));
-    } catch (e) { if (rev !== revision) return; busy.remove(); errorState(e.name === 'AbortError' ? new Error('The source request timed out.') : e, browse, target); }
+      if (toResults) A.nav.focus(target.querySelector('.anime-card') || content.querySelector('.search-field'));
+      else focusCatalog(target);
+    } catch (e) {
+      if (rev !== revision) return; busy.remove();
+      errorState(e.name === 'AbortError' ? new Error('The source request timed out.') : e, browse, target);
+      focusCatalog(target);
+    }
   }
   function pagination(target, rev) {
     if (!nextPage || query) return;

@@ -42,6 +42,16 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     await page.goto(server.origin);
     await page.locator('.anime-card').first().waitFor();
     assert.equal(await page.locator('.anime-card').count(), 6); checks.push('Catalog rendered with six titles');
+    // First visit: focus on the first title, the search box dim (no focus ring, normal border).
+    await until(page, () => document.activeElement === document.querySelector('.anime-card'));
+    const searchLook = () => page.evaluate(() => {
+      const box = document.querySelector('.search-field'), style = getComputedStyle(box);
+      return { border: style.borderTopColor, outline: style.outlineStyle, focused: box.matches(':focus, :focus-within') };
+    });
+    assert.deepEqual(await searchLook(), { border: 'rgb(56, 50, 67)', outline: 'none', focused: false });
+    await page.keyboard.press('ArrowUp');
+    assert.deepEqual(await searchLook(), { border: 'rgb(208, 188, 255)', outline: 'none', focused: true });
+    checks.push('Browse opens on the first title; the search box is dim until reached, then a single border');
     // Menu icons are drawn (SVG), not font symbols that the TV font lacks.
     const icons = await page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).map(item => {
       const svg = item.querySelector('svg.nav-icon'), box = svg && svg.getBoundingClientRect();
