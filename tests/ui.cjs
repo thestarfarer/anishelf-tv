@@ -42,6 +42,14 @@ const now = page => page.evaluate(() => document.getElementById('video').current
     await page.goto(server.origin);
     await page.locator('.anime-card').first().waitFor();
     assert.equal(await page.locator('.anime-card').count(), 6); checks.push('Catalog rendered with six titles');
+    // Menu icons are drawn (SVG), not font symbols that the TV font lacks.
+    const icons = await page.evaluate(() => Array.from(document.querySelectorAll('.nav-item')).map(item => {
+      const svg = item.querySelector('svg.nav-icon'), box = svg && svg.getBoundingClientRect();
+      return { svg: !!svg, width: box ? Math.round(box.width) : 0, symbols: /[^\x00-\x7f]/.test(item.textContent) };
+    }));
+    assert.deepEqual(icons, Array(4).fill({ svg: true, width: 26, symbols: false }));
+    await page.locator('.sidebar').screenshot({ path: path.join(output, 'sidebar-icons.png') });
+    checks.push('Menu icons are drawn shapes, not font symbols');
     await page.screenshot({ path: path.join(output, 'browse-1920.png') });
     await page.getByRole('button', { name: 'Load more', exact: true }).click();
     await until(page, () => document.querySelectorAll('.anime-card').length === 12);

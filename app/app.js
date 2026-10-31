@@ -248,7 +248,7 @@
       const a = document.createElement('a'); a.href = url; a.download = 'anishelf-library.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 60000);
       A.toast('Backup requested. Some TV browsers do not support file downloads.');
     }, 'subtle')); backup.append(actions, file); content.append(backup);
-    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.3.1'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
+    const about = el('section', 'settings-block'); about.append(el('h2', '', 'AniShelf TV · 0.3.2'), el('p', '', 'An unofficial adaptation of Aniyomi for webOS, starting with AnimeOnsen. This is an experimental build, not an official Aniyomi release.'));
     about.append(el('p', 'technical-note', 'AnimeOnsen browsing, episodes, library, history, subtitles, DASH/HLS playback with quality and audio selection, and AniSkip opening/ending skips. Android extension APKs, manga, downloads and tracker sync are not implemented. AnimeOnsen may require browser verification on some networks.'));
     about.append(button('Verify AnimeOnsen access', verifySource, 'subtle load-more'));
     about.append(button('Connection details', async () => {

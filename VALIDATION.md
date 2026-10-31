@@ -1,6 +1,18 @@
-# Validation — AniShelf TV 0.3.1
+# Validation — AniShelf TV 0.3.2
 
 Status: **experimental build, not a completed or hardware-verified Aniyomi port**.
+
+## Changes in 0.3.2
+
+- Sound on the TV works: the 0.3.1 "no sound" report was the TV's audio output
+  being switched off. The always-available Audio menu stays (track choice, the
+  format/decoded-sound readout and the built-in-player fallback are still useful
+  with a single track).
+- The sidebar icons were font symbols (`▤ ⌕ ◷ ≡`); the TV font has no `⌕`/`◷`
+  (drawn as boxes) and draws the others as bare lines. They are inline SVG
+  icons now (library, magnifier, clock, gear). The `−` minus sign in "-10 sec"
+  is now an ASCII hyphen for the same reason. The browser suite checks that the
+  menu icons are drawn shapes.
 
 ## Changes in 0.3.1
 
@@ -108,8 +120,8 @@ of ellipsis glyphs), adding to 0.1.0's coverage:
   BaseURL, comments/CDATA/entities, `urn:`/`data:` values, `..` paths, malformed
   XML rejection, and a served CDN-switch manifest whose segments route correctly.
 
-`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **23 checks
-passed** (0.3.1 adds: pointer focus keeps the search field, anchored rounded
+`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **24 checks
+passed** (0.3.2 adds the drawn-menu-icon check; 0.3.1 adds: pointer focus keeps the search field, anchored rounded
 dropdowns, subtitle size from the Subtitles menu, switching to the TV's built-in
 player and back from the Audio menu, and the playback readout in Connection details), with the app's Content-Security-Policy enforced and no violations.
 `tests/verify-ui.cjs` adds **6 checks**. It uses Chromium's real DevTools port

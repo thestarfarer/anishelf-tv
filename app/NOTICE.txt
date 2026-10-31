@@ -1,4 +1,4 @@
-AniShelf TV 0.3.1
+AniShelf TV 0.3.2
 Unofficial personal webOS adaptation. Not affiliated with or endorsed by Aniyomi,
 Yuzono, AnimeOnsen, or LG Electronics.
 
