@@ -1,0 +1,5 @@
+{
+  "id": "com.homebrew.anishelf.source",
+  "description": "AnimeOnsen source and loopback-only media transport",
+  "services": [{ "name": "com.homebrew.anishelf.source" }]
+}

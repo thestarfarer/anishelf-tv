@@ -1,0 +1,39 @@
+AniShelf TV 0.1.0
+Unofficial personal webOS adaptation. Not affiliated with or endorsed by Aniyomi,
+Yuzono, AnimeOnsen, or LG Electronics.
+
+The TV user interface, remote navigation, loopback media transport, state layer,
+and build/test integration were written for this port. They are licensed under
+Apache-2.0. The original AniShelf icon is also licensed under Apache-2.0.
+
+AnimeOnsen source adapter
+Adapted from the AnimeOnsen extension in yuzono/anime-extensions:
+https://github.com/yuzono/anime-extensions/tree/d41cdf3a47a5bd7e44cd71d184b6f662d6434d2d/src/all/animeonsen
+License: Apache-2.0 (LICENSE in this distribution).
+Original files consulted: AnimeOnsen.kt, AOAPIInterceptor.kt,
+SearchInterceptor.kt, AnimeOnsenDto.kt, AnimeOnsenFilters.kt.
+Changes: translated request/response handling to Node.js, added bounded network
+requests, single-flight token refresh, fixed method dispatch, local media
+transport, and subtitle conversion. The client ID/secret in public-client.json
+are the publicly distributed application's credentials from that extension,
+not user credentials. They are sent only to its documented OAuth endpoint.
+
+Aniyomi backup compatibility
+Schema and progress-unit behavior adapted from aniyomiorg/aniyomi:
+https://github.com/aniyomiorg/aniyomi/tree/97414446b8a95994c72dd33c41c971a89d4d25b8
+License: Apache-2.0; upstream copyright/license notice in licenses/Aniyomi.txt.
+Original files consulted: Backup.kt, BackupAnime.kt, BackupEpisode.kt,
+BackupCategory.kt, BackupAnimeSource.kt, BackupAnimeHistory.kt,
+BackupDecoder.kt, and PlayerViewModel.kt.
+Changes: implemented a bounded JavaScript protobuf reader and one-way converter
+for AnimeOnsen library entries, watched status, and playback positions.
+
+Build-only dependencies
+@webos-tools/cli 3.2.6: LG Electronics, Apache-2.0.
+Playwright 1.52.0: Microsoft, Apache-2.0 (development tests only).
+jsdom 26.1.0: jsdom contributors, MIT (development tests only).
+Neither build dependency is bundled into the TV application. The TV supplies
+the webos-service runtime module. No remote JavaScript or auto-updater is used.
+
+Test catalog entries, poster graphics, subtitles, and sample media are original
+synthetic test fixtures. They are not part of the TV application.
