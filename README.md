@@ -8,7 +8,7 @@
 
 # AniShelf TV — an experimental Aniyomi adaptation
 
-This build (0.3.2) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
+This build (0.3.3) targets the LG OLED55C2RLA running webOS 25 (10.2.1; firmware
 33.22.52). It runs entirely on the TV and starts with the **AnimeOnsen** source.
 It is an unofficial adaptation, with a new TV interface and a JavaScript port
 of the source adapter. It is not the Android APK running inside webOS, and it
@@ -16,7 +16,7 @@ does not implement all of Aniyomi.
 
 ## Install on your already-rooted C2
 
-1. Download `com.homebrew.anishelf_0.3.2_all.ipk` to your computer.
+1. Download `com.homebrew.anishelf_0.3.3_all.ipk` to your computer.
 2. Open [webOS Dev Manager](https://github.com/webosbrew/dev-manager-desktop)
    and connect using your existing rooted-TV connection.
 3. Choose **Apps → Install**, select the `.ipk`, and wait for installation.

@@ -1,6 +1,19 @@
-# Validation — AniShelf TV 0.3.2
+# Validation — AniShelf TV 0.3.3
 
 Status: **experimental build, not a completed or hardware-verified Aniyomi port**.
+
+## Changes in 0.3.3
+
+- The TV's on-screen keyboard: Enter did not close it and pressing Search opened
+  it, because after a search focus returned to the text field and webOS opens its
+  keyboard whenever a text field has focus. The remote now lands on a box around
+  the field (OK starts typing); Enter submits, leaves the field and focuses the
+  first result; Back while typing closes the keyboard without leaving Browse.
+- Opening Browse no longer focuses the search box (it was drawn "selected" with a
+  double outline). Focus lands on the first title; a reached search box shows a
+  single border, as while typing. Results never take focus from someone typing.
+- README: a Browse screenshot captured on the LG C2, the AI-generated warning and
+  the one tested TV.
 
 ## Changes in 0.3.2
 
@@ -120,8 +133,10 @@ of ellipsis glyphs), adding to 0.1.0's coverage:
   BaseURL, comments/CDATA/entities, `urn:`/`data:` values, `..` paths, malformed
   XML rejection, and a served CDN-switch manifest whose segments route correctly.
 
-`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **24 checks
-passed** (0.3.2 adds the drawn-menu-icon check; 0.3.1 adds: pointer focus keeps the search field, anchored rounded
+`npm run test:ui` in Chromium 1208 (headless, Playwright 1.52): **28 checks
+passed** (0.3.3 adds four search-box checks: Enter submits and leaves the field,
+Search does not focus it, OK starts and Back stops typing, and Browse opens dim
+on the first title; 0.3.2 adds the drawn-menu-icon check; 0.3.1 adds: pointer focus keeps the search field, anchored rounded
 dropdowns, subtitle size from the Subtitles menu, switching to the TV's built-in
 player and back from the Audio menu, and the playback readout in Connection details), with the app's Content-Security-Policy enforced and no violations.
 `tests/verify-ui.cjs` adds **6 checks**. It uses Chromium's real DevTools port
